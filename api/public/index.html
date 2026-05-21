@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DuoVoice Tutor — Interactive Voice Playground</title>
+  
+  <!-- Premium Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Supabase JS Client & LiveKit Client via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+
+  <style>
+    :root {
+      --bg-darker: #090B11;
+      --bg-dark: #0F121D;
+      --bg-card: rgba(22, 28, 45, 0.4);
+      --bg-glass: rgba(15, 18, 29, 0.6);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(99, 102, 241, 0.15);
+      
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-glow: rgba(99, 102, 241, 0.4);
+      
+      --secondary: #a855f7;
+      --secondary-glow: rgba(168, 85, 247, 0.4);
+      
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.1);
+      
+      --danger: #ef4444;
+      --danger-bg: rgba(239, 68, 68, 0.1);
+      
+      --warning: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.1);
+      
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-inverse: #ffffff;
+      
+      --font-display: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+      --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-darker);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.12) 0px, transparent 50%);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 3rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo-icon {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.25rem;
+      color: var(--text-inverse);
+      box-shadow: 0 8px 24px var(--primary-glow);
+    }
+
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ffffff, #d1d5db);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-text span {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status-badge {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      padding: 0.5rem 1rem;
+      border-radius: 99px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--danger);
+      box-shadow: 0 0 12px var(--danger);
+    }
+
+    .status-dot.active {
+      background-color: var(--success);
+      box-shadow: 0 0 12px var(--success);
+    }
+
+    .status-dot.warning {
+      background-color: var(--warning);
+      box-shadow: 0 0 12px var(--warning);
+    }
+
+    /* ── CARD STYLES ── */
+    .glass-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+      transition: var(--transition-smooth);
+    }
+
+    .glass-card:hover {
+      border-color: rgba(99, 102, 241, 0.2);
+      box-shadow: 0 20px 48px rgba(99, 102, 241, 0.05);
+    }
+
+    /* ── AUTHENTICATION PANEL ── */
+    .panel-title {
+      font-size: 1.75rem;
+      margin-bottom: 0.5rem;
+      color: var(--text-inverse);
+    }
+
+    .panel-subtitle {
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 768px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 0.95rem;
+      transition: var(--transition-smooth);
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 12px var(--primary-glow);
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .btn {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.85rem 1.75rem;
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 12px;
+      border: none;
+      transition: var(--transition-smooth);
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: var(--text-inverse);
+      box-shadow: 0 4px 16px var(--primary-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px var(--primary-glow);
+      opacity: 0.95;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--text-muted);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: var(--text-inverse);
+      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(239, 68, 68, 0.4);
+    }
+
+    /* ── SCENARIO GRID ── */
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .scenario-card {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .scenario-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: transparent;
+      transition: var(--transition-smooth);
+    }
+
+    .scenario-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(99, 102, 241, 0.3);
+      background: rgba(99, 102, 241, 0.03);
+    }
+
+    .scenario-card.selected {
+      border-color: var(--primary);
+      background: rgba(99, 102, 241, 0.05);
+      box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1);
+    }
+
+    .scenario-card.selected::before {
+      background: linear-gradient(to bottom, var(--primary), var(--secondary));
+    }
+
+    .scenario-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--text-inverse);
+    }
+
+    .scenario-description {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+      margin-bottom: 1.25rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .scenario-badge {
+      display: inline-flex;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+      border: 1px solid var(--border-color);
+    }
+
+    .scenario-badge.level-1 {
+      color: var(--success);
+      background-color: var(--success-bg);
+      border-color: rgba(16, 185, 129, 0.2);
+    }
+
+    .scenario-badge.level-2 {
+      color: var(--warning);
+      background-color: var(--warning-bg);
+      border-color: rgba(245, 158, 11, 0.2);
+    }
+
+    .scenario-badge.level-3 {
+      color: var(--danger);
+      background-color: var(--danger-bg);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+
+    /* ── ACTIVE PLAYGROUND INTERFACE ── */
+    .playground-grid {
+      display: grid;
+      grid-template-columns: 4fr 5fr;
+      gap: 2rem;
+    }
+
+    @media (max-width: 1024px) {
+      .playground-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ── LEFT PANE: CALL CONTROLS ── */
+    .call-chamber {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+      text-align: center;
+      position: relative;
+    }
+
+    .visualizer-outer {
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      margin-bottom: 2.5rem;
+    }
+
+    .pulse-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 2px solid var(--primary);
+      opacity: 0;
+      transition: var(--transition-smooth);
+    }
+
+    .pulse-ring.active {
+      animation: pulseGlow 2s infinite ease-out;
+    }
+
+    .pulse-ring.active:nth-child(2) {
+      animation-delay: 0.6s;
+    }
+
+    .pulse-ring.active:nth-child(3) {
+      animation-delay: 1.2s;
+    }
+
+    .visualizer-core {
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      color: var(--text-inverse);
+      box-shadow: 0 12px 36px var(--primary-glow);
+      z-index: 2;
+      transition: var(--transition-smooth);
+    }
+
+    .visualizer-core.muted {
+      background: #374151;
+      box-shadow: none;
+    }
+
+    @keyframes pulseGlow {
+      0% {
+        transform: scale(0.85);
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+    }
+
+    .call-meta-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--text-inverse);
+    }
+
+    .call-meta-status {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+    }
+
+    .controller-pad {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    /* ── RIGHT PANE: CHAT TIMELINE ── */
+    .timeline-card {
+      display: flex;
+      flex-direction: column;
+      height: 600px;
+      padding: 1.5rem;
+    }
+
+    .timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 1rem;
+    }
+
+    .timeline-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-inverse);
+    }
+
+    .scroll-timeline {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      scroll-behavior: smooth;
+    }
+
+    /* Scrollbar Styling */
+    .scroll-timeline::-webkit-scrollbar {
+      width: 6px;
+    }
+    .scroll-timeline::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .scroll-timeline::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 99px;
+    }
+
+    .bubble-wrapper {
+      display: flex;
+      flex-direction: column;
+      max-width: 80%;
+    }
+
+    .bubble-wrapper.user {
+      align-self: flex-end;
+    }
+
+    .bubble-wrapper.agent {
+      align-self: flex-start;
+    }
+
+    .bubble-sender {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+      margin-left: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .bubble-wrapper.user .bubble-sender {
+      text-align: right;
+      margin-right: 0.5rem;
+      margin-left: 0;
+    }
+
+    .chat-bubble {
+      padding: 0.85rem 1.25rem;
+      border-radius: 18px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      position: relative;
+    }
+
+    .bubble-wrapper.user .chat-bubble {
+      background: var(--primary);
+      color: var(--text-inverse);
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .bubble-wrapper.agent .chat-bubble {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-bottom-left-radius: 4px;
+    }
+
+    /* ── GRAMMAR CORRECTION BOX ── */
+    .correction-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: var(--warning-bg);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: var(--warning);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      margin-top: 0.5rem;
+      cursor: pointer;
+      user-select: none;
+      transition: var(--transition-smooth);
+    }
+
+    .correction-badge:hover {
+      background: rgba(245, 158, 11, 0.2);
+    }
+
+    .correction-drawer {
+      margin-top: 0.5rem;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--warning);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-size: 0.85rem;
+      display: none;
+      animation: slideDown 0.25s ease-out forwards;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .correction-field {
+      margin-bottom: 0.4rem;
+    }
+
+    .correction-field:last-child {
+      margin-bottom: 0;
+    }
+
+    .field-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .field-val.wrong {
+      color: var(--danger);
+      text-decoration: line-through;
+    }
+
+    .field-val.right {
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .field-val.explain {
+      color: var(--text-main);
+      font-style: italic;
+    }
+
+    .empty-timeline {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .empty-icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      opacity: 0.4;
+    }
+
+    /* ── UTILITIES & DYNAMIC STATES ── */
+    .hidden {
+      display: none !important;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: rgba(15, 18, 29, 0.9);
+      border: 1px solid var(--border-color);
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      animation: toastIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+    }
+
+    @keyframes toastIn {
+      from { transform: translateY(20px) scale(0.9); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .toast.success { border-left: 4px solid var(--success); }
+    .toast.error { border-left: 4px solid var(--danger); }
+    .toast.warning { border-left: 4px solid var(--warning); }
+
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- ── HEADER ── -->
+    <header>
+      <div class="logo-container">
+        <div class="logo-icon">V</div>
+        <div class="logo-text">DuoVoice<span>Tutor</span></div>
+      </div>
+      
+      <div class="status-badge">
+        <div id="api-status-dot" class="status-dot"></div>
+        <span id="api-status-text">Server Offline</span>
+      </div>
+    </header>
+
+    <!-- ── STEP 1: SCENARIO SELECTION ── -->
+    <div id="step-setup" class="glass-card">
+      <h2 class="panel-title">Choose a Conversation Scenario</h2>
+      <p class="panel-subtitle">Pick a context to begin practicing. Your AI Spanish tutor will instantly adapt its vocabulary, roleplay scenario, and difficulty level.</p>
+      
+      <!-- SCENARIO SELECTION -->
+      <div id="scenarios-panel" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+        <div id="scenarios-list" class="scenario-grid">
+          <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted)">
+            Loading scenarios...
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 2rem;">
+          <button id="btn-start-session" class="btn btn-primary" style="padding: 1rem 2.5rem; font-size: 1.1rem; box-shadow: 0 8px 32px var(--primary-glow);" disabled>
+            Start Real-Time Session
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 2: ACTIVE VOICE SESSION PLAYGROUND ── -->
+    <div id="step-playground" class="hidden">
+      
+      <div class="playground-grid">
+        
+        <!-- LEFT PANEL: CONNECTION & ACTIVE STATE -->
+        <div class="glass-card call-chamber">
+          <div class="visualizer-outer">
+            <div id="ring-1" class="pulse-ring"></div>
+            <div id="ring-2" class="pulse-ring"></div>
+            <div id="ring-3" class="pulse-ring"></div>
+            <div id="visualizer" class="visualizer-core">🎙️</div>
+          </div>
+
+          <h3 id="session-scenario-title" class="call-meta-title">Coffee Shop Ordering</h3>
+          <p id="connection-status" class="call-meta-status">Initializing WebRTC Connection...</p>
+
+          <div class="controller-pad">
+            <button id="btn-toggle-mic" class="btn btn-secondary">
+              <span>🔇</span> Mute Mic
+            </button>
+            <button id="btn-toggle-pause" class="btn btn-secondary">
+              <span>⏸️</span> Pause Tutor
+            </button>
+            <button id="btn-complete-session" class="btn btn-danger">
+              <span>🛑</span> Complete Session
+            </button>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL: LIVE TRANSCRIPTION TIMELINE & FEEDBACK -->
+        <div class="glass-card timeline-card">
+          <div class="timeline-header">
+            <div class="timeline-title">Conversation & Grammar Logs</div>
+            <div id="logs-sync-status" style="font-size: 0.75rem; color: var(--text-muted);">
+              ● Live Sync Active
+            </div>
+          </div>
+
+          <div id="chat-timeline" class="scroll-timeline">
+            <!-- Empty state default -->
+            <div id="empty-state" class="empty-timeline">
+              <div class="empty-icon">🗣️</div>
+              <p>Say hello to your tutor to begin! Real-time transcriptions and grammar feedback will populate here.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // Intercept console logs to stream them to the Express backend for transparent E2E diagnostics
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+
+    function sendRemoteLog(type, message, args) {
+      originalLog(`[Browser ${type.toUpperCase()}]:`, message, ...args);
+      fetch('/debug-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          message: String(message),
+          args: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a))
+        })
+      }).catch(() => {});
+    }
+
+    console.log = function(message, ...args) {
+      sendRemoteLog('info', message, args);
+    };
+    console.warn = function(message, ...args) {
+      sendRemoteLog('warn', message, args);
+    };
+    console.error = function(message, ...args) {
+      sendRemoteLog('error', message, args);
+    };
+
+    window.addEventListener('error', (event) => {
+      sendRemoteLog('error', `Uncaught exception: ${event.message} at ${event.filename}:${event.lineno}`, []);
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+      sendRemoteLog('error', `Unhandled Promise Rejection: ${event.reason}`, []);
+    });
+
+    // ── STATE MANAGEMENT ──
+    const state = {
+      authToken: 'demo-token',
+      scenarios: [],
+      selectedScenarioId: null,
+      sessionId: null,
+      
+      // LiveKit objects
+      livekitRoom: null,
+      isMuted: false,
+      isPaused: false,
+      
+      // Polling Intervals
+      feedbackInterval: null,
+      
+      // Cache
+      localTurnsMap: new Map()
+    };
+
+    // ── ON STARTUP ──
+    window.addEventListener('DOMContentLoaded', () => {
+      console.log("DOMContentLoaded: Initializing playground...");
+      checkApiHealth();
+      setupEventListeners();
+      fetchScenarios();
+    });
+
+    // ── SERVER HEALTHCHECK ──
+    async function checkApiHealth() {
+      const dot = document.getElementById('api-status-dot');
+      const text = document.getElementById('api-status-text');
+      
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        if (data.ok) {
+          dot.className = 'status-dot active';
+          text.textContent = 'Server Connected';
+        } else {
+          throw new Error();
+        }
+      } catch (e) {
+        dot.className = 'status-dot';
+        text.textContent = 'Server Offline';
+        showToast('Cannot connect to Express API. Ensure backend is running.', 'error');
+      }
+    }
+
+    // ── EVENT ROUTERS ──
+    function setupEventListeners() {
+      // Start / Stop sessions
+      document.getElementById('btn-start-session').addEventListener('click', handleStartSession);
+      document.getElementById('btn-toggle-mic').addEventListener('click', handleToggleMute);
+      document.getElementById('btn-toggle-pause').addEventListener('click', handleTogglePause);
+      document.getElementById('btn-complete-session').addEventListener('click', handleCompleteSession);
+    }
+
+    // ── SCENARIOS LOADER ──
+    async function fetchScenarios() {
+      console.log("fetchScenarios: Fetching active scenarios...");
+      try {
+        const res = await fetch('/v1/sessions/scenarios', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.authToken}`
+          }
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error?.message || 'Failed to fetch scenarios from Express API.');
+        }
+
+        const data = await res.json();
+        state.scenarios = data || [];
+        console.log(`fetchScenarios: Successfully loaded ${state.scenarios.length} scenarios.`, state.scenarios);
+        
+        renderScenariosGrid();
+      } catch (err) {
+        console.error(err);
+        showToast(`Failed to load scenarios: ${err.message}`, 'error');
+      }
+    }
+
+    function renderScenariosGrid() {
+      const container = document.getElementById('scenarios-list');
+      container.innerHTML = '';
+
+      if (state.scenarios.length === 0) {
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted)">No active scenario settings found in database.</div>';
+        return;
+      }
+
+      state.scenarios.forEach(sc => {
+        const card = document.createElement('div');
+        card.className = `scenario-card ${state.selectedScenarioId === sc.id ? 'selected' : ''}`;
+        card.dataset.id = sc.id;
+        
+        const level = sc.difficulty_level || 1;
+        const title = sc.title || 'Practice Scenario';
+        
+        // Clean description preview from system_prompt
+        let preview = sc.system_prompt || 'No description available.';
+        if (preview.length > 120) {
+          preview = preview.substring(0, 120) + '...';
+        }
+        
+        card.innerHTML = `
+          <div class="scenario-title">${escapeHtml(title)}</div>
+          <div class="scenario-description">${escapeHtml(preview)}</div>
+          <span class="scenario-badge level-${level}">Difficulty ${level}</span>
+        `;
+
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          state.selectedScenarioId = sc.id;
+          document.getElementById('btn-start-session').disabled = false;
+        });
+
+        container.appendChild(card);
+      });
+    }
+
+    // ── START SESSION WEBRTC ──
+    async function handleStartSession() {
+      if (!state.selectedScenarioId) return;
+      console.log(`handleStartSession: Starting session for scenario: ${state.selectedScenarioId}`);
+
+      const btn = document.getElementById('btn-start-session');
+      btn.textContent = 'Launching voice room...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/v1/sessions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.authToken}`
+          },
+          body: JSON.stringify({ scenario_id: state.selectedScenarioId })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error?.message || 'Server failed to start session.');
+
+        state.sessionId = data.session_id;
+        console.log(`handleStartSession: Session created successfully. ID: ${state.sessionId}`, data);
+        
+        // Transition panel
+        document.getElementById('step-setup').classList.add('hidden');
+        document.getElementById('step-playground').classList.remove('hidden');
+        
+        const scenario = state.scenarios.find(s => s.id === state.selectedScenarioId);
+        document.getElementById('session-scenario-title').textContent = scenario ? scenario.title : 'Voice Practice Room';
+        
+        // Fire up WebRTC
+        await connectToWebRtc(data.livekit_url, data.livekit_token);
+        
+        // Fire up Polling feedback logs
+        startFeedbackSync();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message, 'error');
+        btn.textContent = 'Start Real-Time Session';
+        btn.disabled = false;
+      }
+    }
+
+    // ── WEBRTC CONNECTION (LIVEKIT) ──
+    async function connectToWebRtc(url, token) {
+      updateStatus('Connecting LiveKit WebRTC...', 'warning');
+      console.log(`connectToWebRtc: Initializing connection. URL: ${url}`);
+      
+      try {
+        // Enable detailed LiveKit SDK debug logging
+        if (typeof LivekitClient !== 'undefined' && typeof LivekitClient.setLogLevel === 'function') {
+          LivekitClient.setLogLevel('debug');
+        }
+        
+        // Resolve direct protocol
+        const resolvedUrl = url.replace('https://', 'wss://').replace('http://', 'ws://');
+        console.log(`connectToWebRtc: Resolved URL: ${resolvedUrl}`);
+        
+        // Initialize LiveKit Room
+        console.log("connectToWebRtc: Instantiating LivekitClient.Room...");
+        state.livekitRoom = new LivekitClient.Room({
+          adaptiveStream: true,
+          dynacast: true,
+        });
+
+        // Setup event hooks
+        state.livekitRoom
+          .on(LivekitClient.RoomEvent.Connected, () => {
+            console.log("LivekitClient Event: Room Connected!");
+            updateStatus('Tutor is online. Start speaking!', 'active');
+            toggleVisualizerPulse(true);
+          })
+          .on(LivekitClient.RoomEvent.Disconnected, (reason) => {
+            console.log("LivekitClient Event: Room Disconnected! Reason:", reason);
+            updateStatus('Session Disconnected', 'inactive');
+            toggleVisualizerPulse(false);
+          })
+          .on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+            console.log(`LivekitClient Event: Track Subscribed! Kind: ${track.kind}`);
+            if (track.kind === 'audio') {
+              const element = track.attach();
+              document.body.appendChild(element);
+            }
+          })
+          .on(LivekitClient.RoomEvent.TrackSubscriptionFailed, (trackSid, participant) => {
+            console.error(`LivekitClient Event: Track Subscription Failed! trackSid: ${trackSid}, participant: ${participant?.identity}`);
+          })
+          .on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+            console.log(`LivekitClient Event: Participant Connected! Identity: ${participant.identity}, Role: ${participant.role}`);
+          })
+          .on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+            console.log(`LivekitClient Event: Participant Disconnected! Identity: ${participant.identity}`);
+          })
+          .on(LivekitClient.RoomEvent.LocalTrackPublished, (publication, participant) => {
+            console.log(`LivekitClient Event: Local Track Published! Kind: ${publication.kind}`);
+          });
+
+        // Join room and publish microphone
+        console.log("connectToWebRtc: Connecting to room...");
+        await state.livekitRoom.connect(resolvedUrl, token);
+        console.log("connectToWebRtc: Connected! Publishing microphone...");
+        await state.livekitRoom.localParticipant.enableCameraAndMicrophone(false, true);
+        console.log("connectToWebRtc: Microphone successfully published!");
+        
+      } catch (err) {
+        console.error('[WebRTC Error]:', err);
+        showToast(`WebRTC Connection Failed: ${err.message}`, 'error');
+        updateStatus('WebRTC Connection Error', 'inactive');
+      }
+    }
+
+    // ── LOGS POLLING FEEDBACK SYNC ──
+    function startFeedbackSync() {
+      // Immediate load
+      syncTurnsFeedback();
+      
+      // Interval pull every 3 seconds
+      state.feedbackInterval = setInterval(syncTurnsFeedback, 3000);
+    }
+
+    async function syncTurnsFeedback() {
+      if (!state.sessionId) return;
+      
+      try {
+        const res = await fetch(`/v1/sessions/${state.sessionId}/feedback`, {
+          headers: { 'Authorization': `Bearer ${state.authToken}` }
+        });
+        
+        if (!res.ok) return;
+        const turns = await res.json();
+        
+        renderTurns(turns);
+      } catch (e) {
+        console.warn('Feedback synchronization error:', e);
+      }
+    }
+
+    function renderTurns(turns) {
+      const timeline = document.getElementById('chat-timeline');
+      const emptyState = document.getElementById('empty-state');
+      
+      if (turns.length > 0 && emptyState) {
+        emptyState.remove();
+      }
+
+      let hasNew = false;
+      
+      turns.forEach((turn, idx) => {
+        const cacheKey = `${turn.role}-${turn.transcript}-${idx}`;
+        if (state.localTurnsMap.has(cacheKey)) return;
+        
+        hasNew = true;
+        state.localTurnsMap.set(cacheKey, true);
+
+        const bubbleWrapper = document.createElement('div');
+        bubbleWrapper.className = `bubble-wrapper ${turn.role}`;
+        
+        const sender = document.createElement('div');
+        sender.className = 'bubble-sender';
+        sender.textContent = turn.role === 'user' ? 'You' : 'Spanish Tutor';
+        
+        const bubble = document.createElement('div');
+        bubble.className = 'chat-bubble';
+        bubble.textContent = turn.transcript;
+
+        // If user turn has a correction enqueued and contains an error
+        if (turn.role === 'user' && turn.corrections && turn.corrections.error) {
+          const badge = document.createElement('div');
+          badge.className = 'correction-badge';
+          badge.innerHTML = '✨ Grammar Tip Available';
+          
+          const drawer = document.createElement('div');
+          drawer.className = 'correction-drawer';
+          drawer.innerHTML = `
+            <div class="correction-field">
+              <span class="field-label">Learner Said:</span>
+              <span class="field-val wrong">${escapeHtml(turn.corrections.error)}</span>
+            </div>
+            <div class="correction-field">
+              <span class="field-label">Correct Spanish:</span>
+              <span class="field-val right">${escapeHtml(turn.corrections.correction)}</span>
+            </div>
+            <div class="correction-field">
+              <span class="field-label">Tutor Tip:</span>
+              <span class="field-val explain">${escapeHtml(turn.corrections.explanation)}</span>
+            </div>
+          `;
+          
+          badge.addEventListener('click', () => {
+            const isVisible = drawer.style.display === 'block';
+            drawer.style.display = isVisible ? 'none' : 'block';
+          });
+
+          bubble.appendChild(badge);
+          bubble.appendChild(drawer);
+        }
+
+        bubbleWrapper.appendChild(sender);
+        bubbleWrapper.appendChild(bubble);
+        timeline.appendChild(bubbleWrapper);
+      });
+
+      if (hasNew) {
+        timeline.scrollTop = timeline.scrollHeight;
+      }
+    }
+
+    // ── MUTE / UNMUTE ──
+    async function handleToggleMute() {
+      if (!state.livekitRoom) return;
+
+      const isCurrentlyMuted = state.isMuted;
+      const btn = document.getElementById('btn-toggle-mic');
+      const core = document.getElementById('visualizer');
+      
+      try {
+        await state.livekitRoom.localParticipant.setMicrophoneEnabled(isCurrentlyMuted);
+        state.isMuted = !isCurrentlyMuted;
+
+        if (state.isMuted) {
+          btn.innerHTML = '<span>🎙️</span> Unmute Mic';
+          btn.className = 'btn btn-primary';
+          core.className = 'visualizer-core muted';
+          core.textContent = '🔇';
+          toggleVisualizerPulse(false);
+          showToast('Microphone muted', 'warning');
+        } else {
+          btn.innerHTML = '<span>🔇</span> Mute Mic';
+          btn.className = 'btn btn-secondary';
+          core.className = 'visualizer-core';
+          core.textContent = '🎙️';
+          toggleVisualizerPulse(true);
+          showToast('Microphone active', 'success');
+        }
+      } catch (err) {
+        showToast('Failed to toggle mic state.', 'error');
+      }
+    }
+
+    // ── PAUSE / RESUME ──
+    async function handleTogglePause() {
+      if (!state.sessionId) return;
+      
+      const btn = document.getElementById('btn-toggle-pause');
+      const nextState = state.isPaused ? 'active' : 'paused';
+      btn.disabled = true;
+
+      try {
+        if (nextState === 'paused') {
+          // Pause API
+          const res = await fetch(`/v1/sessions/${state.sessionId}/status`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${state.authToken}`
+            },
+            body: JSON.stringify({ status: 'paused' })
+          });
+          if (!res.ok) throw new Error('Failed to pause session in database.');
+
+          // Teardown WebRTC
+          if (state.livekitRoom) {
+            await state.livekitRoom.disconnect();
+            state.livekitRoom = null;
+          }
+
+          state.isPaused = true;
+          btn.innerHTML = '<span>▶️</span> Resume Tutor';
+          btn.className = 'btn btn-primary';
+          updateStatus('Conversation Paused', 'inactive');
+          toggleVisualizerPulse(false);
+          showToast('Session paused successfully.', 'success');
+        } else {
+          // Resume API
+          const res = await fetch(`/v1/sessions/${state.sessionId}/resume`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${state.authToken}`
+            }
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error?.message || 'Failed to resume session.');
+
+          // Reconnect WebRTC
+          await connectToWebRtc(data.livekit_url, data.livekit_token);
+
+          state.isPaused = false;
+          btn.innerHTML = '<span>⏸️</span> Pause Tutor';
+          btn.className = 'btn btn-secondary';
+          showToast('Session resumed successfully.', 'success');
+        }
+      } catch (err) {
+        console.error(err);
+        showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── COMPLETE SESSION ──
+    async function handleCompleteSession() {
+      if (!state.sessionId) return;
+
+      const confirm = window.confirm('Are you sure you want to finish this tutor session? This will generate your final grammar assessment review.');
+      if (!confirm) return;
+
+      try {
+        clearInterval(state.feedbackInterval);
+        
+        // Call complete status
+        await fetch(`/v1/sessions/${state.sessionId}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.authToken}`
+          },
+          body: JSON.stringify({ status: 'completed' })
+        });
+
+        // Disconnect room
+        if (state.livekitRoom) {
+          await state.livekitRoom.disconnect();
+          state.livekitRoom = null;
+        }
+
+        showToast('Session completed successfully!', 'success');
+        updateStatus('Session Finished', 'inactive');
+        toggleVisualizerPulse(false);
+        
+        // Single final pull
+        syncTurnsFeedback();
+        
+        // Hide control buttons except assessment
+        document.getElementById('btn-toggle-mic').classList.add('hidden');
+        document.getElementById('btn-toggle-pause').classList.add('hidden');
+        document.getElementById('btn-complete-session').innerHTML = '<span>🏠</span> Back to Scenarios';
+        document.getElementById('btn-complete-session').className = 'btn btn-primary';
+        document.getElementById('btn-complete-session').onclick = () => window.location.reload();
+      } catch (err) {
+        showToast('Failed to complete session: ' + err.message, 'error');
+      }
+    }
+
+    // ── DYNAMIC CSS PULSES ──
+    function toggleVisualizerPulse(active) {
+      document.getElementById('ring-1').className = `pulse-ring ${active ? 'active' : ''}`;
+      document.getElementById('ring-2').className = `pulse-ring ${active ? 'active' : ''}`;
+      document.getElementById('ring-3').className = `pulse-ring ${active ? 'active' : ''}`;
+    }
+
+    // ── HELPERS ──
+    function updateStatus(label, type) {
+      const statusEl = document.getElementById('connection-status');
+      statusEl.textContent = label;
+      
+      const dot = document.getElementById('api-status-dot');
+      if (type === 'active') {
+        dot.className = 'status-dot active';
+      } else if (type === 'warning') {
+        dot.className = 'status-dot warning';
+      } else {
+        dot.className = 'status-dot';
+      }
+    }
+
+    function showToast(message, type = 'success') {
+      const oldToast = document.querySelector('.toast');
+      if (oldToast) oldToast.remove();
+
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      
+      let icon = '✨';
+      if (type === 'error') icon = '⚠️';
+      if (type === 'warning') icon = '⚡';
+
+      toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.animation = 'toastIn 0.3s reverse forwards';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>

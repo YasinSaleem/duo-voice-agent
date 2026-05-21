@@ -29,6 +29,29 @@ function sendError(res: Response, status: number, code: string, message: string)
 router.use(authMiddleware);
 
 /**
+ * Route 0: GET /v1/sessions/scenarios
+ * Purpose: Fetch all active scenarios for scenario selection
+ */
+router.get('/scenarios', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { data: scenarios, error } = await supabaseAdmin
+      .from('scenarios')
+      .select('*')
+      .order('title', { ascending: true });
+
+    if (error) {
+      console.error('[Sessions] Error fetching scenarios:', error);
+      return sendError(res, 500, 'DATABASE_ERROR', 'Failed to retrieve scenarios.');
+    }
+
+    return res.status(200).json(scenarios);
+  } catch (err: any) {
+    console.error('[Sessions] Unexpected error in GET /scenarios:', err);
+    return sendError(res, 500, 'INTERNAL_SERVER_ERROR', err.message || 'An unexpected error occurred.');
+  }
+});
+
+/**
  * Route 1: POST /v1/sessions
  * Purpose: Start a new session
  */

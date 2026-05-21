@@ -1,14 +1,41 @@
 import express, { Request, Response, NextFunction } from 'express';
 import 'dotenv/config';
 import sessionRoutes from './routes/sessions';
+import livekitRoutes from './routes/livekit';
+
+import path from 'path';
 
 const app = express();
 
-// Middleware to parse incoming JSON payloads
-app.use(express.json());
+// Middleware to parse incoming JSON payloads and capture raw body buffer
+app.use(express.json({
+  type: ['application/json', 'application/webhook+json'],
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+
+// Request logging middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  console.log(`[API Request] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Serve static UI assets from the public directory
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Session Routes
 app.use('/v1/sessions', sessionRoutes);
+
+// LiveKit Webhook Route
+app.use('/internal/livekit', livekitRoutes);
+
+// Browser Remote Debug Logging Endpoint
+app.post('/debug-log', (req: any, res: any) => {
+  const { type, message, args } = req.body;
+  console.log(`[Browser ${type.toUpperCase()}]:`, message, args ? args.join(' ') : '');
+  res.json({ ok: true });
+});
 
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {

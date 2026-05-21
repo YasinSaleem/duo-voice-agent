@@ -492,9 +492,14 @@ def load_prior_context(session_id: str) -> list[dict]:
 
 This is the core Pipecat worker. It:
 1. Joins a LiveKit room as an agent participant
-2. Runs the VAD → ASR → LLM → TTS pipeline
-3. Writes each completed turn to MongoDB
-4. Enqueues grammar jobs to Redis
+2. Uses Silero VAD for speech boundary detection / turn segmentation
+3. Runs the ASR → LLM → TTS conversational pipeline
+4. Writes each completed turn to MongoDB
+5. Enqueues grammar jobs to Redis
+
+IMPORTANT: Verify the exact LiveKitParams VAD configuration fields
+against the installed pipecat-ai version before implementation,
+as VAD parameter names may differ across releases.
 
 ```python
 import asyncio, os, json
@@ -540,18 +545,25 @@ async def write_turn(session_id: str, role: str, transcript: str) -> str:
 
 def enqueue_grammar_job(session_id: str, turn_id: str):
     payload = json.dumps({"sessionId": session_id, "turnId": turn_id})
-    redis.lpush("grammar_jobs", payload)
+    redis.rpush("grammar_jobs", payload)
 
 async def run_agent(session_id: str, scenario_system_prompt: str):
     # Load prior context if this is a resumed session
     prior_messages = load_prior_context(session_id)
 
-    # ── Transport ──────────────────────────────────────────────────────────────
+    # ── Transport + VAD ────────────────────────────────────────────────────────
+    vad = SileroVADAnalyzer()
+
     transport = LiveKitTransport(
         url=os.environ["LIVEKIT_URL"],
         token=_mint_agent_token(session_id),  # see helper below
         room_name=session_id,
-        params=LiveKitParams(audio_in_enabled=True, audio_out_enabled=True)
+        params=LiveKitParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            vad_enabled=True,
+            vad_analyzer=vad
+        )
     )
 
     # ── STT ────────────────────────────────────────────────────────────────────
@@ -709,7 +721,7 @@ async def main():
     # other async tasks, replace with an async Redis client (e.g. redis.asyncio).
     while True:
         # Blocking pop with 5s timeout
-        result = redis.brpop("grammar_jobs", timeout=5)
+        result = redis.blpop("grammar_jobs", timeout=5)
         if result:
             _, raw = result
             payload = json.loads(raw)
