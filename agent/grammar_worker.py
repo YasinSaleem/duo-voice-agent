@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import time
 from dotenv import load_dotenv
 load_dotenv()
@@ -39,9 +40,18 @@ redis = Redis(
 
 # ── Grammar Evaluation Specifications ─────────────────────────────────────────
 GRAMMAR_SYSTEM_PROMPT = """
-You are a Spanish language grammar checker.
-Given a Spanish or mixed Spanish-English utterance from a language learner, identify ONE grammar error if present.
-Respond ONLY with a valid JSON object in this exact shape:
+You are a Spanish grammar checker for a live voice tutoring app.
+Given a spoken Spanish or mixed Spanish-English utterance from a learner, identify ONE helpful spoken-Spanish grammar correction if present.
+
+Important rules:
+- Only flag issues that matter for spoken Spanish grammar.
+- Never flag punctuation, commas, capitalization, quotation marks, or typing-style issues.
+- Do not correct pure English help requests, names by themselves, fillers, acknowledgements, or punctuation-only noise.
+- If the learner's utterance is already acceptable, too short to judge, or not clearly a grammar mistake, return null values.
+- Prefer no correction over a low-confidence or nitpicky correction.
+
+Keep your internal <think> reasoning extremely brief and concise (under 2 sentences).
+You MUST output the final response ONLY in this exact JSON shape (do not include any conversational text outside the JSON):
 {
   "error": "<what they said>",
   "correction": "<correct form>",
@@ -54,6 +64,22 @@ If there is no grammar error, return a valid JSON object with null values:
   "explanation": null
 }
 """
+
+LOW_SIGNAL_RE = re.compile(r"^[\W_]+$")
+HELP_REQUEST_RE = re.compile(
+    r"\b(i don't understand|i do not understand|can you explain|in english|what does that mean|no entiendo|expl[ií]calo en ingl[eé]s)\b",
+    re.IGNORECASE,
+)
+
+def should_skip_grammar_check(text: str) -> bool:
+    normalized = text.strip()
+    if not normalized:
+        return True
+    if LOW_SIGNAL_RE.fullmatch(normalized):
+        return True
+    if HELP_REQUEST_RE.search(normalized):
+        return True
+    return False
 
 async def process_job(payload: dict):
     turn_id = payload.get("turnId")
@@ -68,6 +94,15 @@ async def process_job(payload: dict):
     user_text = doc["transcript"]
     print(f"[GrammarWorker] Analyzing user turn: '{user_text}'")
 
+    if should_skip_grammar_check(user_text):
+        corrections = {"error": None, "correction": None, "explanation": None}
+        await turns_col.update_one(
+            {"_id": ObjectId(turn_id)},
+            {"$set": {"corrections": corrections}}
+        )
+        print(f"[GrammarWorker] Skipped grammar check for low-signal or help-request turn: {turn_id}")
+        return
+
     try:
         response = groq_client.chat.completions.create(
             model="qwen/qwen3-32b",
@@ -75,7 +110,7 @@ async def process_job(payload: dict):
                 {"role": "system", "content": GRAMMAR_SYSTEM_PROMPT},
                 {"role": "user", "content": user_text}
             ],
-            max_tokens=1024
+            max_tokens=2048
         )
         
         raw_content = response.choices[0].message.content.strip()

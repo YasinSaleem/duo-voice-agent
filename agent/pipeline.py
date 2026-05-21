@@ -2,6 +2,7 @@ import asyncio
 import os
 import json
 import sys
+import re
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,6 +24,7 @@ from pipecat.services.groq.llm import GroqLLMService
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineTask, PipelineParams
@@ -49,6 +51,34 @@ redis = Redis(
     token=os.environ["UPSTASH_REDIS_REST_TOKEN"]
 )
 
+GLOBAL_TUTOR_POLICY = """
+You are a warm, patient, low-pressure Spanish conversation tutor for a live voice app.
+
+Core behavior:
+- Prioritize the learner's confidence, clarity, and speaking flow over perfect accuracy.
+- Keep replies short and easy to process in audio: usually 1-2 short sentences, occasionally 3 if needed.
+- Ask at most one question at a time.
+- Stay aligned with the scenario, but adapt naturally to what the learner actually says instead of forcing the script.
+- If the learner says they do not understand, seems confused, or asks for English, briefly explain the immediately previous Spanish in simple English, then gently invite a short Spanish retry.
+- Do not give long vocabulary lectures unless explicitly asked.
+- Do not invent phonetic spellings unless the learner explicitly asks for pronunciation help.
+- If the learner says something off-topic like their name or how they feel, respond naturally and then gently guide them back to the scenario.
+
+Correction style:
+- Focus on helping spoken Spanish.
+- Prefer implicit modeling over heavy correction during the live conversation.
+- Give at most one small correction at a time, only when it is useful.
+- Never comment on commas, punctuation, capitalization, or typing conventions in the live lesson.
+- If the learner uses English to ask for help, answer that help request instead of pretending they completed the Spanish task.
+
+Language policy:
+- Default to Spanish for normal tutoring.
+- Switch to brief English only for clarification, confusion, or direct English requests.
+"""
+
+def build_system_prompt(scenario_system_prompt: str) -> str:
+    return f"{GLOBAL_TUTOR_POLICY.strip()}\n\nScenario instructions:\n{scenario_system_prompt.strip()}"
+
 # ── Helper Functions ───────────────────────────────────────────────────────────
 async def write_turn(session_id: str, role: str, transcript: str) -> str:
     """Persist conversation turn in MongoDB. Returns the inserted turn document ID."""
@@ -70,29 +100,99 @@ def enqueue_grammar_job(session_id: str, turn_id: str):
     redis.rpush("grammar_jobs", payload)
     print(f"[Pipeline] Grammar job enqueued for turn {turn_id} (FIFO)")
 
-# ── Custom User Turn Frame Processor ─────────────────────────────────────────
-class UserTurnProcessor(FrameProcessor):
+def normalize_transcript_spacing(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+def utterance_flush_delay(text: str) -> float:
+    normalized = normalize_transcript_spacing(text)
+    word_count = len(normalized.split())
+    if normalized.endswith(("?", "!", ".")):
+        return 0.30
+    if word_count <= 1:
+        return 0.80
+    if word_count <= 3:
+        return 0.65
+    return 0.45
+
+# ── Custom User Turn Buffer Processor ────────────────────────────────────────
+class UserTurnBufferProcessor(FrameProcessor):
     """
-    Custom FrameProcessor placed immediately downstream of Deepgram STT.
-    Intercepts user TranscriptionFrames to log turns and trigger grammar evaluation.
+    Buffers nearby final STT chunks into a single utterance before they reach
+    the LLM or grammar queue. This avoids fragmentary turns like "Mi" or
+    "no gusta" being treated as complete user messages.
     """
     def __init__(self, session_id: str):
         super().__init__()
         self.session_id = session_id
+        self._buffered_frames: list[TranscriptionFrame] = []
+        self._flush_task: asyncio.Task | None = None
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
-        
-        # Intercept completed user speech transcription frames
-        # In Pipecat 1.2.1, InterimTranscriptionFrame does not inherit from TranscriptionFrame
-        # This check is guaranteed to trigger exclusively on final transcripts
+
         if isinstance(frame, TranscriptionFrame):
-            print(f"[UserTurnProcessor] Intercepted user turn: {frame.text}")
-            # Persist to MongoDB & enqueue grammar check
-            turn_id = await write_turn(self.session_id, "user", frame.text)
-            enqueue_grammar_job(self.session_id, turn_id)
-            
+            await self._buffer_transcription(frame, direction)
+            return
+
+        if isinstance(frame, EndFrame):
+            await self._flush_buffer(direction)
+
         await self.push_frame(frame, direction)
+
+    async def _buffer_transcription(self, frame: TranscriptionFrame, direction: FrameDirection):
+        text = normalize_transcript_spacing(frame.text)
+        if not text:
+            return
+
+        print(f"[UserTurnBufferProcessor] Buffering transcript chunk: {text}")
+        buffered_frame = TranscriptionFrame(
+            text=text,
+            user_id=frame.user_id,
+            timestamp=frame.timestamp,
+            language=frame.language,
+            result=frame.result,
+            finalized=frame.finalized,
+        )
+        self._buffered_frames.append(buffered_frame)
+
+        if self._flush_task and not self._flush_task.done():
+            self._flush_task.cancel()
+
+        delay = utterance_flush_delay(" ".join(item.text for item in self._buffered_frames))
+        self._flush_task = asyncio.create_task(self._flush_after_delay(delay, direction))
+
+    async def _flush_after_delay(self, delay: float, direction: FrameDirection):
+        try:
+            await asyncio.sleep(delay)
+            await self._flush_buffer(direction)
+        except asyncio.CancelledError:
+            pass
+
+    async def _flush_buffer(self, direction: FrameDirection):
+        if self._flush_task and self._flush_task.done():
+            self._flush_task = None
+
+        if not self._buffered_frames:
+            return
+
+        frames_to_flush = self._buffered_frames
+        self._buffered_frames = []
+
+        merged_text = normalize_transcript_spacing(" ".join(frame.text for frame in frames_to_flush))
+        last_frame = frames_to_flush[-1]
+        merged_frame = TranscriptionFrame(
+            text=merged_text,
+            user_id=last_frame.user_id,
+            timestamp=last_frame.timestamp,
+            language=last_frame.language,
+            result=last_frame.result,
+            finalized=True,
+        )
+
+        print(f"[UserTurnBufferProcessor] Flushing merged user turn: {merged_text}")
+        turn_id = await write_turn(self.session_id, "user", merged_text)
+        enqueue_grammar_job(self.session_id, turn_id)
+        await self.push_frame(merged_frame, direction)
 
 # ── Main Runner ───────────────────────────────────────────────────────────────
 async def run_agent(session_id: str, scenario_system_prompt: str):
@@ -100,7 +200,14 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     prior_messages = load_prior_context(session_id)
 
     # 1. Silero Voice Activity Detector
-    vad = SileroVADAnalyzer()
+    vad = SileroVADAnalyzer(
+        params=VADParams(
+            start_secs=0.15,
+            stop_secs=0.35,
+            confidence=0.7,
+            min_volume=0.6,
+        )
+    )
 
     # 2. LiveKit WebRTC Transport
     transport = LiveKitTransport(
@@ -118,7 +225,10 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     # 3. Deepgram STT Service (enables English & Spanish detection)
     stt = DeepgramSTTService(
         api_key=os.environ["DEEPGRAM_API_KEY"],
-        language="multi",
+        settings=DeepgramSTTService.Settings(
+            language="multi",
+            model="nova-3-general",
+        )
     )
 
     # 4. Groq LLM Service (Spanish language tutor model)
@@ -135,7 +245,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
 
 
     # 6. LLM Context Initialization
-    messages = [{"role": "system", "content": scenario_system_prompt}]
+    messages = [{"role": "system", "content": build_system_prompt(scenario_system_prompt)}]
     messages.extend(prior_messages)
 
     context = LLMContext(messages)
@@ -146,7 +256,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     assistant_aggregator = context_aggregator.assistant()
 
     # 8. Custom User Turn Interceptor
-    user_turn_processor = UserTurnProcessor(session_id)
+    user_turn_processor = UserTurnBufferProcessor(session_id)
 
     # 9. Pipecat Pipeline Assembly
     pipeline = Pipeline([
@@ -168,9 +278,17 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     @transport.event_handler("on_first_participant_joined")
     async def on_first_participant_joined(transport, participant_id):
         print(f"[Pipeline] First participant joined room. ID: {participant_id}")
-        # Greet the user in Spanish (tú casual for difficulty 1 level)
-        # TTSSpeakFrame is processed by TTS and intercepted by the assistant aggregator
-        greeting = "¡Hola! Bienvenido. ¿Qué te gustaría pedir hoy?"
+        
+        # Greet the user based on whether this is a new or resumed session
+        if prior_messages:
+            greeting = "¡Hola de nuevo! Continuemos con nuestra conversación. ¿En qué nos quedamos?"
+        else:
+            greeting = "¡Hola! Bienvenido. ¿Qué te gustaría pedir hoy?"
+            
+        print(f"[Pipeline] Enqueueing greeting turn: '{greeting}'")
+        # Save greeting turn manually to MongoDB since it bypasses the LLM generator
+        await write_turn(session_id, "agent", greeting)
+        
         await task.queue_frame(TTSSpeakFrame(greeting))
 
     @transport.event_handler("on_participant_disconnected")
