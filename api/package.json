@@ -1,0 +1,27 @@
+{
+  "name": "api",
+  "version": "1.0.0",
+  "description": "Voice AI Spanish Language Tutor API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "doctor": "ts-node src/doctor.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "@upstash/redis": "^1.38.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "livekit-server-sdk": "^2.15.3",
+    "mongodb": "^7.2.0",
+    "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
+    "@types/ws": "^8.18.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

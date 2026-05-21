@@ -1,0 +1,6 @@
+# Pipecat agent worker requirements
+pipecat-ai[livekit,deepgram,groq]
+pymongo
+motor
+upstash-redis
+python-dotenv

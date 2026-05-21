@@ -1,0 +1,56 @@
+# OS Metadata files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Editor configurations
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+
+# Node.js (api/ subproject)
+api/node_modules/
+api/dist/
+api/build/
+api/out/
+api/.env
+api/.env.local
+api/.env.development.local
+api/.env.test.local
+api/.env.production.local
+api/npm-debug.log*
+api/yarn-debug.log*
+api/yarn-error.log*
+api/*.log
+
+# Python (agent/ subproject)
+agent/__pycache__/
+agent/*.py[cod]
+agent/*$py.class
+agent/.venv/
+agent/venv/
+agent/env/
+agent/.env
+agent/.env.local
+agent/*.log
+agent/build/
+agent/dist/
+agent/*.egg-info/
+
+# Local Environment Variables and sensitive backups
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.backup
+*.bak
