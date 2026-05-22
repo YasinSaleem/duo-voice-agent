@@ -39,6 +39,16 @@ Based on the latency verification test files (`verify_groq_streaming.py` and Pip
   - Deepgram TTS adds approximately `300-500ms` of processing.
   - **Total Conversational Latency (User stops speaking -> Agent starts speaking):** Consistently `under 1.0 second` (typically ~800ms), creating a highly fluid, natural voice conversation.
 
+## 🧪 Testing & Evaluation
+
+Testing real-time WebRTC audio pipelines can be slow and flaky. To ensure the reliability of the conversational "brain" and its strict adherence to pedagogical rules, the system employs a decoupled regression testing harness (`agent/eval_tutor.py`).
+
+- **Isolated Prompt Testing:** The harness imports the exact `GLOBAL_TUTOR_POLICY` and `GRAMMAR_SYSTEM_PROMPT` used in production.
+- **Assertion-Based Edge Cases:** It uses deterministic assertions against the LLM's raw text generation to test edge cases, such as:
+  - Verifying the agent emits hidden `<lesson_item>` metadata tags.
+  - Ensuring the agent falls back to English when confused (rather than hallucinating in Spanish).
+  - Validating that the grammar worker successfully ignores STT transcription artifacts (like accent marks).
+
 ## 💰 Costs
 
 The stack was chosen to heavily optimize for both low latency and low cost:
