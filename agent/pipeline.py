@@ -29,7 +29,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineTask, PipelineParams
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
-from pipecat.frames.frames import Frame, TranscriptionFrame, TTSSpeakFrame, EndFrame
+from pipecat.frames.frames import Frame, TranscriptionFrame, TTSSpeakFrame, EndFrame, TextFrame
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from upstash_redis import Redis
@@ -107,14 +107,35 @@ def normalize_transcript_spacing(text: str) -> str:
 
 def utterance_flush_delay(text: str) -> float:
     normalized = normalize_transcript_spacing(text)
-    word_count = len(normalized.split())
-    if normalized.endswith(("?", "!", ".")):
-        return 0.30
-    if word_count <= 1:
-        return 0.80
-    if word_count <= 3:
-        return 0.65
-    return 0.45
+    words = normalized.split()
+    word_count = len(words)
+    
+    ends_with_terminal = normalized.endswith(("?", "!"))
+    ends_with_period = normalized.endswith(".")
+    
+    # Only treat period as a terminal pause if we have more than 2 words (e.g. avoid splitting "Blanco.")
+    if ends_with_terminal or (ends_with_period and word_count > 2):
+        return 0.60
+    return 2.00
+
+class TutorSpeechStreamer(FrameProcessor):
+    """
+    Frame processor placed between the LLM and TTS to stream tutor text chunks
+    in real-time to the client via the LiveKit data channel.
+    """
+    def __init__(self, transport):
+        super().__init__()
+        self.transport = transport
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TextFrame):
+            try:
+                payload = json.dumps({"type": "tutor_text_chunk", "text": frame.text})
+                await self.transport.send_message(payload)
+            except Exception as e:
+                print(f"[TutorSpeechStreamer] Error: {e}")
+        await self.push_frame(frame, direction)
 
 # ── Custom User Turn Buffer Processor ────────────────────────────────────────
 class UserTurnBufferProcessor(FrameProcessor):
@@ -205,7 +226,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     vad = SileroVADAnalyzer(
         params=VADParams(
             start_secs=0.15,
-            stop_secs=0.35,
+            stop_secs=0.50,
             confidence=0.7,
             min_volume=0.6,
         )
@@ -259,6 +280,9 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
 
     # 8. Custom User Turn Interceptor
     user_turn_processor = UserTurnBufferProcessor(session_id)
+    
+    # 8b. Tutor Speech Chunk Streamer
+    tutor_speech_streamer = TutorSpeechStreamer(transport)
 
     # 9. Pipecat Pipeline Assembly
     pipeline = Pipeline([
@@ -267,6 +291,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         user_turn_processor,         # Downstream of stt
         user_aggregator,             # Pre-instantiated user aggregator
         llm,
+        tutor_speech_streamer,       # Stream text chunks in real-time
         tts,
         transport.output(),
         assistant_aggregator         # Pre-instantiated assistant aggregator
@@ -291,6 +316,15 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         # Save greeting turn manually to MongoDB since it bypasses the LLM generator
         await write_turn(session_id, "agent", greeting)
         
+        # Send greeting text chunk to client so it streams/shows immediately
+        try:
+            payload_chunk = json.dumps({"type": "tutor_text_chunk", "text": greeting})
+            await transport.send_message(payload_chunk)
+            payload_end = json.dumps({"type": "tutor_text_end"})
+            await transport.send_message(payload_end)
+        except Exception as e:
+            print(f"[Pipeline] Error sending greeting text: {e}")
+        
         await task.queue_frame(TTSSpeakFrame(greeting))
 
     @transport.event_handler("on_participant_disconnected")
@@ -302,8 +336,17 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     @assistant_aggregator.event_handler("on_assistant_turn_stopped")
     async def on_agent_turn(processor, message):
         if message.content:
-            print(f"[Pipeline] Intercepted agent turn: {message.content}")
-            await write_turn(session_id, "agent", message.content)
+            interrupted = getattr(message, "interrupted", False)
+            if interrupted:
+                print(f"[Pipeline] Tutor was interrupted. Skipping database log writing for: {message.content}")
+            else:
+                print(f"[Pipeline] Intercepted agent turn: {message.content}")
+                await write_turn(session_id, "agent", message.content)
+            try:
+                payload = json.dumps({"type": "tutor_text_end"})
+                await transport.send_message(payload)
+            except Exception as e:
+                print(f"[Pipeline] Error sending tutor_text_end: {e}")
 
     # ── Execution ─────────────────────────────────────────────────────────────
     runner = PipelineRunner()

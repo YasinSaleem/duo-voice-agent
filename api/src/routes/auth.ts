@@ -1,7 +1,8 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { authMiddleware } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
+import { supabaseAdmin } from '../db/supabase';
 
 const router = Router();
 
@@ -23,22 +24,28 @@ router.get('/config', (_req, res) => {
  * Route: GET /v1/auth/memories
  * Purpose: Fetch the authenticated user's memory timeline (RLS-enforced).
  */
-router.get('/memories', authMiddleware, async (req: AuthenticatedRequest, res: Response): Promise<any> => {
+router.get('/memories', authMiddleware, async (req: Request, res: Response): Promise<any> => {
   try {
-    // Dynamic user-scoped client using the propagated accessToken
-    const userClient = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_ANON_KEY!,
-      {
-        auth: { persistSession: false, autoRefreshToken: false },
-        global: { headers: { Authorization: `Bearer ${req.user.accessToken}` } }
-      }
-    );
+    const authReq = req as AuthenticatedRequest;
+    let userClient;
+    if (process.env.ALLOW_DEMO_AUTH === 'true' && authReq.user.accessToken === 'demo-token') {
+      userClient = supabaseAdmin;
+    } else {
+      userClient = createClient(
+        process.env.SUPABASE_URL!,
+        process.env.SUPABASE_ANON_KEY!,
+        {
+          auth: { persistSession: false, autoRefreshToken: false },
+          global: { headers: { Authorization: `Bearer ${authReq.user.accessToken}` } }
+        }
+      );
+    }
 
-    // Queries memories respecting RLS policies
+    // Queries memories respecting RLS policies (user-isolated via explicit .eq filter)
     const { data: memories, error } = await userClient
       .from('memories')
       .select('*')
+      .eq('user_id', authReq.user.id)
       .order('created_at', { ascending: false });
 
     if (error) {

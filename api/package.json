@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "doctor": "ts-node src/doctor.ts"
+    "doctor": "ts-node src/doctor.ts",
+    "dev:all": "concurrently --names \"api,grammar,memory\" --prefix-colors \"blue,green,magenta\" \"npm run dev\" \"cd ../agent && python3 grammar_worker.py\" \"cd ../agent && python3 memory_worker.py\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
@@ -21,6 +22,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.1",
     "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^6.0.3"

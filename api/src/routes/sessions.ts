@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
 import { supabaseAdmin } from '../db/supabase';
 import { getTurnsCollection } from '../db/mongo';
-import { createLiveKitToken } from '../services/livekit';
+import { createLiveKitToken, spawnAgent } from '../services/livekit';
 import { cacheResumeTurns, enqueueMemoryJob } from '../services/redis';
 
 const router = Router();
@@ -177,6 +177,14 @@ router.post('/:session_id/resume', async (req: Request, res: Response): Promise<
 
     // 5. Mint LiveKit WebRTC room token
     const token = await createLiveKitToken(session_id, authReq.user.id);
+
+    // 6. Spawn the Python tutor agent process in the background immediately
+    try {
+      console.log(`[Sessions Route] Resuming session: spawning agent for session ${session_id}...`);
+      await spawnAgent(session_id);
+    } catch (err) {
+      console.error(`[Sessions Route] Error spawning agent during resume:`, err);
+    }
 
     return res.status(200).json({
       livekit_url: process.env.LIVEKIT_URL,

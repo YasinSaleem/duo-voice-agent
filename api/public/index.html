@@ -480,6 +480,45 @@
       margin-bottom: 2rem;
     }
 
+    .live-caption-box {
+      width: 100%;
+      max-width: 320px;
+      margin: 0 auto 2rem auto;
+      padding: 1rem 1.25rem;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      text-align: left;
+      min-height: 80px;
+      max-height: 140px;
+      overflow-y: auto;
+      transition: var(--transition-smooth);
+      position: relative;
+    }
+    
+    .live-caption-box.hidden {
+      display: none !important;
+    }
+
+    .live-caption-label {
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.075em;
+      color: var(--secondary);
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+    }
+
+    #live-caption-text {
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: var(--text-inverse);
+      font-weight: 500;
+    }
+
     .controller-pad {
       display: flex;
       flex-wrap: wrap;
@@ -1001,7 +1040,12 @@
   <!-- ── PROGRESS & MEMORIES DRAWER ── -->
   <div id="progress-drawer" class="progress-drawer">
     <div class="drawer-header">
-      <h3 style="font-size: 1.5rem; font-family: var(--font-display); color: var(--text-inverse);">Learning Progress</h3>
+      <h3 style="font-size: 1.5rem; font-family: var(--font-display); color: var(--text-inverse); display: flex; align-items: center; gap: 0.5rem;">
+        Learning Progress
+        <button id="btn-refresh-progress" class="btn btn-secondary" style="padding: 0.25rem 0.50rem; font-size: 0.75rem; height: auto; margin-left: 0.5rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem;">
+          🔄 Refresh
+        </button>
+      </h3>
       <button id="btn-close-drawer" class="btn-close">&times;</button>
     </div>
     
@@ -1104,6 +1148,12 @@
           <h3 id="session-scenario-title" class="call-meta-title">Coffee Shop Ordering</h3>
           <p id="connection-status" class="call-meta-status">Initializing WebRTC Connection...</p>
 
+          <!-- ── LIVE SUBTITLES CARD ── -->
+          <div id="live-caption-container" class="live-caption-box hidden">
+            <div class="live-caption-label">TUTOR IS SPEAKING</div>
+            <div id="live-caption-text"></div>
+          </div>
+
           <div class="controller-pad">
             <button id="btn-toggle-mic" class="btn btn-secondary">
               <span>🔇</span> Mute Mic
@@ -1196,7 +1246,8 @@
       feedbackInterval: null,
       
       // Cache
-      localTurnsMap: new Map()
+      localTurnsMap: new Map(),
+      tutorSpeechNew: true
     };
 
     // ── ON STARTUP ──
@@ -1348,6 +1399,24 @@
       document.getElementById('btn-view-progress').addEventListener('click', toggleProgressDrawer);
       document.getElementById('btn-close-drawer').addEventListener('click', toggleProgressDrawer);
       document.getElementById('drawer-overlay').addEventListener('click', toggleProgressDrawer);
+
+      // Progress drawer refresh click listener
+      document.getElementById('btn-refresh-progress').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const btn = document.getElementById('btn-refresh-progress');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '🔄 Syncing...';
+        try {
+          await fetchAndRenderMemories();
+          showToast('Progress synced successfully!', 'success');
+        } catch (err) {
+          showToast('Failed to sync progress.', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+        }
+      });
     }
 
     // ── PROGRESS DRAWER TOGGLERS ──
@@ -1663,6 +1732,29 @@
           })
           .on(LivekitClient.RoomEvent.LocalTrackPublished, (publication, participant) => {
             console.log(`LivekitClient Event: Local Track Published! Kind: ${publication.kind}`);
+          })
+          .on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
+            const str = new TextDecoder().decode(payload);
+            try {
+              const data = JSON.parse(str);
+              if (data.type === 'tutor_text_chunk') {
+                const container = document.getElementById('live-caption-container');
+                const textEl = document.getElementById('live-caption-text');
+                if (container && textEl) {
+                  if (state.tutorSpeechNew) {
+                    textEl.textContent = '';
+                    state.tutorSpeechNew = false;
+                  }
+                  container.classList.remove('hidden');
+                  textEl.textContent += data.text;
+                  container.scrollTop = container.scrollHeight;
+                }
+              } else if (data.type === 'tutor_text_end') {
+                state.tutorSpeechNew = true;
+              }
+            } catch (e) {
+              console.error('[LiveKit Data Error]:', e);
+            }
           });
 
         // Join room and publish microphone
@@ -1878,8 +1970,14 @@
       try {
         clearInterval(state.feedbackInterval);
         
+        // Hide subtitles container immediately
+        const subtitleContainer = document.getElementById('live-caption-container');
+        if (subtitleContainer) {
+          subtitleContainer.classList.add('hidden');
+        }
+
         // Call complete status
-        await fetch(`/v1/sessions/${state.sessionId}/status`, {
+        const res = await fetch(`/v1/sessions/${state.sessionId}/status`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -1887,6 +1985,10 @@
           },
           body: JSON.stringify({ status: 'completed' })
         });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error?.message || 'Failed to sync session completion state on server.');
+        }
 
         // Disconnect room
         if (state.livekitRoom) {
@@ -1894,7 +1996,7 @@
           state.livekitRoom = null;
         }
 
-        showToast('Session completed successfully!', 'success');
+        showToast('Session completed successfully! Compiling your final grammar review...', 'success');
         updateStatus('Session Finished', 'inactive');
         toggleVisualizerPulse(false);
         
@@ -1907,6 +2009,33 @@
         document.getElementById('btn-complete-session').innerHTML = '<span>🏠</span> Back to Scenarios';
         document.getElementById('btn-complete-session').className = 'btn btn-primary';
         document.getElementById('btn-complete-session').onclick = () => window.location.reload();
+
+        // ── AUTO-POLLING SIDEBAR UPDATE ──
+        const initialCount = parseInt(document.getElementById('stat-sessions-count').textContent) || 0;
+        let pollCount = 0;
+        const maxPolls = 6; // 18 seconds maximum
+        const pollInterval = setInterval(async () => {
+          pollCount++;
+          console.log(`Auto-sync polling memories... Try ${pollCount}/${maxPolls}`);
+          try {
+            await fetchAndRenderMemories();
+            const newCount = parseInt(document.getElementById('stat-sessions-count').textContent) || 0;
+            if (newCount > initialCount) {
+              clearInterval(pollInterval);
+              showToast('Learning progress synced successfully!', 'success');
+              const drawer = document.getElementById('progress-drawer');
+              if (!drawer.classList.contains('open')) {
+                toggleProgressDrawer();
+              }
+            }
+          } catch (err) {
+            console.error('[Sync Polling Error]:', err);
+          }
+          if (pollCount >= maxPolls) {
+            clearInterval(pollInterval);
+            console.log('[Sync Polling] Completed polling attempt sequence.');
+          }
+        }, 3000);
       } catch (err) {
         showToast('Failed to complete session: ' + err.message, 'error');
       }

@@ -44,7 +44,7 @@ export async function authMiddleware(
   try {
     let user: any = null;
 
-    if (token === 'demo-token') {
+    if (process.env.ALLOW_DEMO_AUTH === 'true' && token === 'demo-token') {
       const { data: authUsers, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
       if (listErr) {
         throw listErr;
