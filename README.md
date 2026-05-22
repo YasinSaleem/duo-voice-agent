@@ -2,7 +2,7 @@
 
 A premium real-time conversational Spanish language tutor system. 
 
-The system leverages **Pipecat**, **LiveKit WebRTC**, **Groq (Llama-3.1-8b-instant for voice conversation & Qwen-32B-instruct for deep reasoning grammar corrections)**, **Deepgram**, **MongoDB**, **Supabase**, and **Upstash Redis** to deliver ultra-low-latency real-time voice conversations paired with asynchronous Spanish grammar evaluation.
+The system leverages **Pipecat**, **LiveKit WebRTC**, **Groq (Llama-3.1-8b-instant for voice conversation & memory generation, Qwen-32B-instruct for deep reasoning grammar corrections)**, **Deepgram**, **MongoDB**, **Supabase**, and **Upstash Redis** to deliver ultra-low-latency real-time voice conversations paired with asynchronous Spanish grammar evaluation and long-term memory generation.
 
 ---
 
@@ -27,20 +27,18 @@ The system runs as an event-driven distributed architecture:
 │                      │                      │                │
 └──────────┬───────────┘                      └────────┬───────┘
            │                                           │
-           │ Finalized User Turns enqueued (FIFO)      │ Read / Write Sessions
+           │ Finalized User Turns enqueued             │ Session Ended Event enqueued
            v                                           v
-┌──────────────────────┐                      ┌────────────────┐
-│    Upstash Redis     │                      │    Supabase    │
-│  ("grammar_jobs")    │                      │  (Auth & DB)   │
-└──────────┬───────────┘                      └────────────────┘
-           │
-           │ Non-blocking LPOP Pull
-           v
-┌──────────────────────┐   Deep Grammar Check   ┌────────────────┐
-│    Grammar Worker    ├───────────────────────>│  MongoDB Atlas │
-│ (grammar_worker.py)  │     (Qwen 32B)        │    (Turns &    │
-└──────────────────────┘                        │  Corrections)  │
-                                                └────────────────┘
+┌──────────────────────┐                      ┌──────────────────────┐
+│    Upstash Redis     │                      │    Upstash Redis     │
+│  ("grammar_jobs")    │                      │   ("memory_jobs")    │
+└──────────┬───────────┘                      └────────┬─────────────┘
+           │ Non-blocking LPOP Pull                    │ Non-blocking LPOP Pull
+           v                                           v
+┌──────────────────────┐   Deep Grammar Check ┌──────────────────────┐  Structured Memory
+│    Grammar Worker    ├─────────────────────>│    Memory Worker     ├────────────────────>
+│ (grammar_worker.py)  │     (MongoDB)        │  (memory_worker.py)  │     (Supabase)
+└──────────────────────┘                      └──────────────────────┘
 ```
 
 ---
@@ -95,7 +93,11 @@ PYTHON_BINARY=python3
 DEEPGRAM_API_KEY=your_deepgram_api_key
 GROQ_API_KEY=gsk_your_groq_api_key
 
-# Upstash Redis (For prior context loader and grammar queue)
+# Supabase (For saving compiled memories)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5c...
+
+# Upstash Redis (For prior context loader and grammar/memory queues)
 UPSTASH_REDIS_REST_URL=https://your-redis-instance.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your_token
 
@@ -129,21 +131,17 @@ LIVEKIT_API_SECRET=your_secret_key
 
 ### Step 2: Start the Local Servers
 
-Open two terminal windows to run both services simultaneously:
+You can run all three required services (the API, the Grammar Worker, and the Memory Worker) simultaneously using a single command:
 
-#### Terminal 1: Run the Express API
 ```bash
 cd api
-npm run dev
+npm run dev:all
 ```
-*The API is now running locally on `http://localhost:3000`.*
 
-#### Terminal 2: Run the Grammar Worker
-```bash
-cd agent
-python3 grammar_worker.py
-```
-*The background grammar worker is now listening on Upstash Redis for user utterances to check grammar asynchronously.*
+*This will start:*
+1. *The Express API on `http://localhost:3000`*
+2. *The background Grammar Worker (listening for user utterances to check grammar asynchronously)*
+3. *The background Memory Worker (listening for completed sessions to generate structured summaries)*
 
 ---
 
