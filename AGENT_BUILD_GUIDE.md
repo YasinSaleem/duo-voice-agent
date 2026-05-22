@@ -207,7 +207,13 @@ values (
   'Tapas Bar in Barcelona',
   'es-ES',
   'en-US',
-  'You are a friendly waiter at a traditional tapas bar in Barcelona. Speak only in simple, everyday Spanish. If the user speaks English, answer their specific question in English briefly, then immediately switch back to Spanish and prompt them to try saying it in Spanish. Stay on the topic of ordering food and drinks. Keep responses under 3 sentences.',
+  'Lesson type: beginner guided lesson.
+Lesson objective: ordering food and drinks at a restaurant.
+Vocabulary targets (teach in this order): el menu (menu), el agua (water), el cafe (coffee), la cuenta (bill), el pan (bread).
+Phrase targets (teach in this order): "Quiero ...", "Me trae ...?", "La cuenta, por favor."
+Progression: start in English. For each target, explain in English, give the Spanish, ask the learner to repeat. Do not move on until mastery (2 correct repetitions OR 1 correct contextual use). After about 3 failed attempts, increase English guidance and simplify. Increase Spanish only after mastery.
+Guided practice: combine phrases and vocab into short requests, then run a short ordering exchange after all items.
+Completion: when all vocab and phrase targets are mastered, say the lesson is complete and ask whether to continue practicing or end the lesson/call.',
   1
 );
 ```
@@ -838,3 +844,73 @@ The agent must not:
 - Create more than one LLM provider integration — use Groq only
 - Add any logging infrastructure beyond `console.log` / `print`
 - Create Docker files or CI/CD configuration unless explicitly asked in a follow-up instruction
+
+---
+
+## 10. Streaming Verification Scripts (Non-Production)
+
+Before changing production latency behavior, run these standalone scripts to verify streaming behavior. These scripts do **not** modify the production runtime or pipeline.
+
+**Location:** `agent/scratch/`
+
+### 10.1 Groq LLM streaming verification
+
+Script: `agent/scratch/verify_groq_streaming.py`
+
+Goal: confirm incremental token streaming using the same model and a production-equivalent prompt shape.
+
+Run:
+```bash
+cd agent
+python3 scratch/verify_groq_streaming.py --system-prompt-file ../AGENT_SYSTEM_PROMPT.txt
+```
+
+Notes:
+- If you do not have a prompt file, set `AGENT_SYSTEM_PROMPT` in your environment or run without `--system-prompt-file` (it will use a representative default prompt).
+- You can override the user prompt with `--user-prompt "..."`.
+
+Expected output interpretation:
+- **Streaming** if the first token arrives significantly before completion and chunks arrive over time.
+- **Buffered/Burst** if chunks cluster near completion or first token appears near the end.
+
+### 10.2 Deepgram TTS streaming verification (Pipecat path)
+
+Script: `agent/scratch/verify_deepgram_tts_streaming.py`
+
+Goal: verify Deepgram TTS streaming using the same Pipecat integration path and voice config as production.
+
+Run:
+```bash
+cd agent
+python3 scratch/verify_deepgram_tts_streaming.py --text "Hola. Hoy vamos a practicar el menu y el agua."
+```
+
+Notes:
+- Uses `DEEPGRAM_API_KEY` and `DEEPGRAM_VOICE` (defaults to `aura-2-sirio-es`).
+- This uses Pipecat's `DeepgramTTSService`, not a generic REST request.
+
+Expected output interpretation:
+- **Streaming** if the first audio chunk arrives significantly before completion and chunks arrive over time.
+- **Buffered/Burst** if audio chunks cluster near completion.
+
+### 10.3 Pipecat streaming trace (mandatory)
+
+Script: `agent/scratch/trace_pipecat_streaming.py`
+
+Goal: trace internal buffering boundaries: first LLM token → first TextFrame → first TTS audio frame.
+
+Run:
+```bash
+cd agent
+python3 scratch/trace_pipecat_streaming.py --system-prompt-file ../AGENT_SYSTEM_PROMPT.txt
+```
+
+Notes:
+- Uses the same Groq and Deepgram services as the production pipeline.
+- Override user input with `--user-text "..."`.
+
+Expected output interpretation:
+- If the first LLM token is late, the LLM is likely buffering.
+- If the first TextFrame is early but audio is late, TTS or Pipecat scheduling is buffering.
+
+---

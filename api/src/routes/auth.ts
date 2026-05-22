@@ -17,7 +17,8 @@ const router = Router();
 router.get('/config', (_req, res) => {
   res.json({
     supabaseUrl: process.env.SUPABASE_URL,
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    enableWebRtcAudioCleanup: process.env.WEBRTC_AUDIO_CLEANUP_ENABLED !== 'false'
   });
 });
 

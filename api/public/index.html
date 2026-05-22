@@ -1497,7 +1497,8 @@
       
       // Cache
       localTurnsMap: new Map(),
-      tutorSpeechNew: true
+      tutorSpeechNew: true,
+      enableWebRtcAudioCleanup: false
     };
 
     // ── ON STARTUP ──
@@ -1541,6 +1542,7 @@
         
         // Initialize public Supabase client
         state.supabase = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+        state.enableWebRtcAudioCleanup = config.enableWebRtcAudioCleanup === true;
         console.log("Supabase Auth Client initialized successfully.");
         
         // Listen to Auth State changes
@@ -2039,10 +2041,20 @@
         
         // Initialize LiveKit Room
         console.log("connectToWebRtc: Instantiating LivekitClient.Room...");
-        state.livekitRoom = new LivekitClient.Room({
+        const roomOptions = {
           adaptiveStream: true,
           dynacast: true,
-        });
+        };
+
+        if (state.enableWebRtcAudioCleanup) {
+          roomOptions.audioCaptureDefaults = {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          };
+        }
+
+        state.livekitRoom = new LivekitClient.Room(roomOptions);
 
         // Setup event hooks
         state.livekitRoom

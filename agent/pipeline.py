@@ -423,9 +423,9 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     # 1. Silero Voice Activity Detector
     vad = SileroVADAnalyzer(
         params=VADParams(
-            start_secs=0.15,
+            start_secs=0.20,
             stop_secs=0.50,
-            confidence=0.7,
+            confidence=0.75,
             min_volume=0.6,
         )
     )
@@ -449,6 +449,8 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         settings=DeepgramSTTService.Settings(
             language="multi",
             model="nova-3-general",
+            endpointing="300",
+            smart_format=True,
         )
     )
 
