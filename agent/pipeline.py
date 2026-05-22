@@ -41,7 +41,7 @@ from pipecat.frames.frames import (
 )
 
 from motor.motor_asyncio import AsyncIOMotorClient
-from upstash_redis import Redis
+from upstash_redis.asyncio import Redis
 from context_loader import load_prior_context
 from supabase import create_client, Client
 
@@ -131,10 +131,10 @@ async def write_turn(session_id: str, role: str, transcript: str) -> str:
     print(f"[Pipeline] Turn persisted to MongoDB: {role} -> ID: {turn_id}")
     return turn_id
 
-def enqueue_grammar_job(session_id: str, turn_id: str):
+async def enqueue_grammar_job(session_id: str, turn_id: str):
     """Enqueues user turn for asynchronous grammar analysis in Redis (FIFO)."""
     payload = json.dumps({"sessionId": session_id, "turnId": turn_id})
-    redis.rpush("grammar_jobs", payload)
+    await redis.rpush("grammar_jobs", payload)
     print(f"[Pipeline] Grammar job enqueued for turn {turn_id} (FIFO)")
 
 def normalize_transcript_spacing(text: str) -> str:
@@ -412,8 +412,8 @@ class TutorSpeechStreamer(FrameProcessor):
         await super().process_frame(frame, direction)
         if isinstance(frame, TextFrame):
             try:
-                redis.set(f"agent_speaking:{self.session_id}", "1", ex=30)
-                redis.set(f"agent_speaking_text:{self.session_id}", frame.text, ex=30)
+                await redis.set(f"agent_speaking:{self.session_id}", "1", ex=30)
+                await redis.set(f"agent_speaking_text:{self.session_id}", frame.text, ex=30)
                 payload = json.dumps({"type": "tutor_text_chunk", "text": frame.text})
                 await self.transport.send_message(payload)
             except Exception as e:
@@ -498,7 +498,7 @@ class UserTurnBufferProcessor(FrameProcessor):
 
         print(f"[UserTurnBufferProcessor] Flushing merged user turn: {merged_text}")
         turn_id = await write_turn(self.session_id, "user", merged_text)
-        enqueue_grammar_job(self.session_id, turn_id)
+        await enqueue_grammar_job(self.session_id, turn_id)
         try:
             payload = json.dumps({
                 "type": "user_turn_final",
@@ -518,7 +518,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     await checkpoint_store.load()
 
     try:
-        redis.set(f"agent_pid:{session_id}", str(os.getpid()), ex=3600)
+        await redis.set(f"agent_pid:{session_id}", str(os.getpid()), ex=3600)
     except Exception as e:
         print(f"[Pipeline] Failed to store agent pid: {e}")
 
@@ -666,8 +666,8 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
             try:
                 payload = json.dumps({"type": "tutor_text_end"})
                 await transport.send_message(payload)
-                redis.delete(f"agent_speaking:{session_id}")
-                redis.delete(f"agent_speaking_text:{session_id}")
+                await redis.delete(f"agent_speaking:{session_id}")
+                await redis.delete(f"agent_speaking_text:{session_id}")
             except Exception as e:
                 print(f"[Pipeline] Error sending tutor_text_end: {e}")
 
@@ -677,9 +677,9 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     print(f"[Pipeline] Starting voice loop for room: {session_id}")
     await runner.run(task)
     try:
-        redis.delete(f"agent_pid:{session_id}")
-        redis.delete(f"agent_speaking:{session_id}")
-        redis.delete(f"agent_speaking_text:{session_id}")
+        await redis.delete(f"agent_pid:{session_id}")
+        await redis.delete(f"agent_speaking:{session_id}")
+        await redis.delete(f"agent_speaking_text:{session_id}")
     except Exception as e:
         print(f"[Pipeline] Failed to clear agent redis keys: {e}")
 
