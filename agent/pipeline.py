@@ -144,9 +144,10 @@ class UserTurnBufferProcessor(FrameProcessor):
     the LLM or grammar queue. This avoids fragmentary turns like "Mi" or
     "no gusta" being treated as complete user messages.
     """
-    def __init__(self, session_id: str):
+    def __init__(self, session_id: str, transport):
         super().__init__()
         self.session_id = session_id
+        self.transport = transport
         self._buffered_frames: list[TranscriptionFrame] = []
         self._flush_task: asyncio.Task | None = None
 
@@ -215,6 +216,15 @@ class UserTurnBufferProcessor(FrameProcessor):
         print(f"[UserTurnBufferProcessor] Flushing merged user turn: {merged_text}")
         turn_id = await write_turn(self.session_id, "user", merged_text)
         enqueue_grammar_job(self.session_id, turn_id)
+        try:
+            payload = json.dumps({
+                "type": "user_turn_final",
+                "turnId": turn_id,
+                "text": merged_text,
+            })
+            await self.transport.send_message(payload)
+        except Exception as e:
+            print(f"[UserTurnBufferProcessor] Error sending user turn event: {e}")
         await self.push_frame(merged_frame, direction)
 
 # ── Main Runner ───────────────────────────────────────────────────────────────
@@ -279,7 +289,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     assistant_aggregator = context_aggregator.assistant()
 
     # 8. Custom User Turn Interceptor
-    user_turn_processor = UserTurnBufferProcessor(session_id)
+    user_turn_processor = UserTurnBufferProcessor(session_id, transport)
     
     # 8b. Tutor Speech Chunk Streamer
     tutor_speech_streamer = TutorSpeechStreamer(transport)

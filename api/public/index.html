@@ -1758,6 +1758,100 @@
       });
     }
 
+    function removeTimelineEmptyState() {
+      const emptyState = document.getElementById('empty-state');
+      if (emptyState) {
+        emptyState.remove();
+      }
+    }
+
+    function getTurnCacheKey(turn, idx) {
+      if (turn.id) {
+        return turn.id;
+      }
+      return `${turn.role}-${turn.transcript}-${idx}`;
+    }
+
+    function appendCorrectionUI(bubble, corrections) {
+      if (!bubble || bubble.querySelector('.correction-badge')) return;
+      if (!corrections || !corrections.error) return;
+
+      const badge = document.createElement('div');
+      badge.className = 'correction-badge';
+      badge.innerHTML = 'Grammar Tip';
+      
+      const drawer = document.createElement('div');
+      drawer.className = 'correction-drawer';
+      drawer.innerHTML = `
+        <div class="correction-field">
+          <span class="field-label">You said:</span>
+          <span class="field-val wrong">${escapeHtml(corrections.error)}</span>
+        </div>
+        <div class="correction-field">
+          <span class="field-label">Correction:</span>
+          <span class="field-val right">${escapeHtml(corrections.correction)}</span>
+        </div>
+        <div class="correction-field">
+          <span class="field-label">Explanation:</span>
+          <span class="field-val explain">${escapeHtml(corrections.explanation)}</span>
+        </div>
+      `;
+      
+      badge.addEventListener('click', () => {
+        const isVisible = drawer.style.display === 'block';
+        drawer.style.display = isVisible ? 'none' : 'block';
+      });
+
+      bubble.appendChild(badge);
+      bubble.appendChild(drawer);
+    }
+
+    function renderOrUpdateTurn(turn, idx) {
+      const timeline = document.getElementById('chat-timeline');
+      const cacheKey = getTurnCacheKey(turn, idx);
+      const existing = state.localTurnsMap.get(cacheKey);
+
+      removeTimelineEmptyState();
+
+      if (existing) {
+        if (turn.role === 'user') {
+          appendCorrectionUI(existing.bubble, turn.corrections);
+        }
+        return false;
+      }
+
+      const bubbleWrapper = document.createElement('div');
+      bubbleWrapper.className = `bubble-wrapper ${turn.role}`;
+      
+      const sender = document.createElement('div');
+      sender.className = 'bubble-sender';
+      sender.textContent = turn.role === 'user' ? 'You' : 'Spanish Tutor';
+      
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble';
+      bubble.textContent = turn.transcript;
+
+      if (turn.role === 'user') {
+        appendCorrectionUI(bubble, turn.corrections);
+      }
+
+      bubbleWrapper.appendChild(sender);
+      bubbleWrapper.appendChild(bubble);
+      timeline.appendChild(bubbleWrapper);
+
+      state.localTurnsMap.set(cacheKey, { bubbleWrapper, bubble });
+      return true;
+    }
+
+    function renderIncomingUserTurn(turn) {
+      if (!turn || !turn.id || !turn.transcript) return;
+      const didRender = renderOrUpdateTurn(turn);
+      if (didRender) {
+        const timeline = document.getElementById('chat-timeline');
+        timeline.scrollTop = timeline.scrollHeight;
+      }
+    }
+
     // ── START SESSION WEBRTC ──
     async function handleStartSession() {
       if (!state.selectedScenarioId) return;
@@ -1781,6 +1875,7 @@
         if (!res.ok) throw new Error(data.error?.message || 'Server failed to start session.');
 
         state.sessionId = data.session_id;
+        state.localTurnsMap.clear();
         console.log(`handleStartSession: Session created successfully. ID: ${state.sessionId}`, data);
         
         // Transition panel
@@ -1873,6 +1968,13 @@
                   textEl.textContent += data.text;
                   container.scrollTop = container.scrollHeight;
                 }
+              } else if (data.type === 'user_turn_final') {
+                renderIncomingUserTurn({
+                  id: data.turnId,
+                  role: 'user',
+                  transcript: data.text,
+                  corrections: null,
+                });
               } else if (data.type === 'tutor_text_end') {
                 state.tutorSpeechNew = true;
               }
@@ -1922,71 +2024,16 @@
     }
 
     function renderTurns(turns) {
-      const timeline = document.getElementById('chat-timeline');
-      const emptyState = document.getElementById('empty-state');
-      
-      if (turns.length > 0 && emptyState) {
-        emptyState.remove();
-      }
-
       let hasNew = false;
       
       turns.forEach((turn, idx) => {
-        const cacheKey = `${turn.role}-${turn.transcript}-${idx}`;
-        if (state.localTurnsMap.has(cacheKey)) return;
-        
-        hasNew = true;
-        state.localTurnsMap.set(cacheKey, true);
-
-        const bubbleWrapper = document.createElement('div');
-        bubbleWrapper.className = `bubble-wrapper ${turn.role}`;
-        
-        const sender = document.createElement('div');
-        sender.className = 'bubble-sender';
-        sender.textContent = turn.role === 'user' ? 'You' : 'Spanish Tutor';
-        
-        const bubble = document.createElement('div');
-        bubble.className = 'chat-bubble';
-        bubble.textContent = turn.transcript;
-
-        // If user turn has a correction enqueued and contains an error
-        if (turn.role === 'user' && turn.corrections && turn.corrections.error) {
-          const badge = document.createElement('div');
-          badge.className = 'correction-badge';
-          badge.innerHTML = 'Grammar Tip';
-          
-          const drawer = document.createElement('div');
-          drawer.className = 'correction-drawer';
-          drawer.innerHTML = `
-            <div class="correction-field">
-              <span class="field-label">You said:</span>
-              <span class="field-val wrong">${escapeHtml(turn.corrections.error)}</span>
-            </div>
-            <div class="correction-field">
-              <span class="field-label">Correction:</span>
-              <span class="field-val right">${escapeHtml(turn.corrections.correction)}</span>
-            </div>
-            <div class="correction-field">
-              <span class="field-label">Explanation:</span>
-              <span class="field-val explain">${escapeHtml(turn.corrections.explanation)}</span>
-            </div>
-          `;
-          
-          badge.addEventListener('click', () => {
-            const isVisible = drawer.style.display === 'block';
-            drawer.style.display = isVisible ? 'none' : 'block';
-          });
-
-          bubble.appendChild(badge);
-          bubble.appendChild(drawer);
+        if (renderOrUpdateTurn(turn, idx)) {
+          hasNew = true;
         }
-
-        bubbleWrapper.appendChild(sender);
-        bubbleWrapper.appendChild(bubble);
-        timeline.appendChild(bubbleWrapper);
       });
 
       if (hasNew) {
+        const timeline = document.getElementById('chat-timeline');
         timeline.scrollTop = timeline.scrollHeight;
       }
     }

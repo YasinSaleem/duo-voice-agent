@@ -240,6 +240,7 @@ router.get('/:session_id/feedback', async (req: Request, res: Response): Promise
       .toArray();
 
     const turns = rawTurns.map(t => ({
+      id: String(t._id),
       role: t.role,
       transcript: t.transcript,
       corrections: t.corrections || null
