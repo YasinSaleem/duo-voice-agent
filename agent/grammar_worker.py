@@ -46,6 +46,7 @@ Given a spoken Spanish or mixed Spanish-English utterance from a learner, identi
 Important rules:
 - Only flag issues that matter for spoken Spanish grammar.
 - Never flag punctuation, commas, capitalization, quotation marks, or typing-style issues.
+- Ignore missing or incorrect accent marks (tildes), as this is an artifact of the speech-to-text transcript and not a spoken error.
 - Do not correct pure English help requests, names by themselves, fillers, acknowledgements, or punctuation-only noise.
 - If the learner's utterance is already acceptable, too short to judge, or not clearly a grammar mistake, return null values.
 - Prefer no correction over a low-confidence or nitpicky correction.
