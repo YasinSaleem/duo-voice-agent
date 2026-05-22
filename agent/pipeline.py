@@ -29,7 +29,24 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineTask, PipelineParams
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
-from pipecat.frames.frames import Frame, TranscriptionFrame, TTSSpeakFrame, EndFrame, TextFrame
+from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
+    Frame,
+    InterimTranscriptionFrame,
+    TranscriptionFrame,
+    TTSSpeakFrame,
+    EndFrame,
+    TextFrame,
+    VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
+)
+from transcript_gating import (
+    AgentSpeechState,
+    evaluate_transcript_commit,
+    extract_deepgram_confidence,
+    load_gating_config,
+)
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from upstash_redis import Redis
@@ -301,14 +318,16 @@ class TutorSpeechStreamer(FrameProcessor):
     Frame processor placed between the LLM and TTS to stream tutor text chunks
     in real-time to the client via the LiveKit data channel.
     """
-    def __init__(self, transport, session_id: str):
+    def __init__(self, transport, session_id: str, speech_state: AgentSpeechState):
         super().__init__()
         self.transport = transport
         self.session_id = session_id
+        self.speech_state = speech_state
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, TextFrame):
+            self.speech_state.note_tutor_text(frame.text)
             try:
                 redis.set(f"agent_speaking:{self.session_id}", "1", ex=30)
                 redis.set(f"agent_speaking_text:{self.session_id}", frame.text, ex=30)
@@ -324,19 +343,53 @@ class UserTurnBufferProcessor(FrameProcessor):
     Buffers nearby final STT chunks into a single utterance before they reach
     the LLM or grammar queue. This avoids fragmentary turns like "Mi" or
     "no gusta" being treated as complete user messages.
+
+    While the tutor is speaking, applies commit gating so echo/hallucinated STT
+    is not persisted or forwarded, without muting STT (barge-in stays possible).
     """
-    def __init__(self, session_id: str, transport):
+    def __init__(
+        self,
+        session_id: str,
+        transport,
+        speech_state: AgentSpeechState,
+        gating_config,
+    ):
         super().__init__()
         self.session_id = session_id
         self.transport = transport
+        self.speech_state = speech_state
+        self.gating_config = gating_config
         self._buffered_frames: list[TranscriptionFrame] = []
         self._flush_task: asyncio.Task | None = None
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self.speech_state.on_bot_started_speaking()
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            self.speech_state.on_bot_stopped_speaking()
+        elif isinstance(frame, VADUserStartedSpeakingFrame):
+            self.speech_state.on_user_vad_started()
+        elif isinstance(frame, VADUserStoppedSpeakingFrame):
+            self.speech_state.on_user_vad_stopped()
+        elif isinstance(frame, TTSSpeakFrame):
+            self.speech_state.arm_tutor_output(frame.text)
+        elif isinstance(frame, TextFrame):
+            self.speech_state.note_tutor_text(frame.text)
+
         if isinstance(frame, TranscriptionFrame):
             await self._buffer_transcription(frame, direction)
+            return
+
+        if isinstance(frame, InterimTranscriptionFrame):
+            if not self._should_forward_transcript(frame.text, frame.result):
+                print(
+                    f"[UserTurnBufferProcessor] Rejected interim transcript during tutor speech: "
+                    f"{frame.text!r}"
+                )
+                return
+            await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, EndFrame):
@@ -344,9 +397,29 @@ class UserTurnBufferProcessor(FrameProcessor):
 
         await self.push_frame(frame, direction)
 
+    def _should_forward_transcript(self, text: str, result) -> bool:
+        normalized = normalize_transcript_spacing(text)
+        if not normalized:
+            return False
+        decision = evaluate_transcript_commit(
+            normalized,
+            speech_state=self.speech_state,
+            confidence=extract_deepgram_confidence(result),
+            config=self.gating_config,
+        )
+        if not decision.accept:
+            print(
+                f"[UserTurnBufferProcessor] Rejected transcript ({decision.reason}): "
+                f"{normalized!r}"
+            )
+        return decision.accept
+
     async def _buffer_transcription(self, frame: TranscriptionFrame, direction: FrameDirection):
         text = normalize_transcript_spacing(frame.text)
         if not text:
+            return
+
+        if not self._should_forward_transcript(text, frame.result):
             return
 
         print(f"[UserTurnBufferProcessor] Buffering transcript chunk: {text}")
@@ -476,11 +549,16 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     user_aggregator = context_aggregator.user()
     assistant_aggregator = context_aggregator.assistant()
 
+    gating_config = load_gating_config()
+    speech_state = AgentSpeechState()
+
     # 8. Custom User Turn Interceptor
-    user_turn_processor = UserTurnBufferProcessor(session_id, transport)
-    
+    user_turn_processor = UserTurnBufferProcessor(
+        session_id, transport, speech_state, gating_config
+    )
+
     # 8b. Tutor Speech Chunk Streamer
-    tutor_speech_streamer = TutorSpeechStreamer(transport, session_id)
+    tutor_speech_streamer = TutorSpeechStreamer(transport, session_id, speech_state)
     lesson_item_processor = LessonItemProcessor(session_id, checkpoint_store)
 
     # 9. Pipecat Pipeline Assembly
@@ -521,6 +599,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
             greeting = "Hi. I will teach you step by step in English, then add Spanish. Ready to start?"
             
         print(f"[Pipeline] Enqueueing greeting turn: '{greeting}'")
+        speech_state.arm_tutor_output(greeting)
         # Save greeting turn manually to MongoDB since it bypasses the LLM generator
         await write_turn(session_id, "agent", greeting)
         
