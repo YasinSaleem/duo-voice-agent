@@ -323,10 +323,15 @@ def _mint_agent_token(session_id: str) -> str:
     return token
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python3 pipeline.py <session_id> <system_prompt>")
+    if len(sys.argv) < 2:
+        print("Usage: python3 pipeline.py <session_id>")
         sys.exit(1)
     
     session_id = sys.argv[1]
-    system_prompt = sys.argv[2]
+    
+    system_prompt = os.environ.get("AGENT_SYSTEM_PROMPT")
+    if not system_prompt:
+        print("[Pipeline] Error: AGENT_SYSTEM_PROMPT environment variable is not defined.")
+        sys.exit(1)
+        
     asyncio.run(run_agent(session_id, system_prompt))

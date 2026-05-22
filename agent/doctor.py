@@ -83,7 +83,7 @@ def mask_secrets(text: str) -> str:
     # Mask any direct mentions of the sensitive env var values
     sensitive_keys = [
         "GROQ_API_KEY", "DEEPGRAM_API_KEY", "LIVEKIT_API_SECRET", 
-        "MONGO_URI", "UPSTASH_REDIS_REST_TOKEN"
+        "MONGO_URI", "UPSTASH_REDIS_REST_TOKEN", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY"
     ]
     for key in sensitive_keys:
         secret = os.getenv(key)
@@ -113,7 +113,10 @@ expected_vars = [
     {"key": "LIVEKIT_API_SECRET", "required": True},
     {"key": "MONGO_URI", "required": True, "regex": mongo_regex, "error": "Must be a valid MongoDB URI (starting with mongodb:// or mongodb+srv://)"},
     {"key": "UPSTASH_REDIS_REST_URL", "required": True, "regex": url_regex, "error": "Must be a valid HTTP/HTTPS URL"},
-    {"key": "UPSTASH_REDIS_REST_TOKEN", "required": True}
+    {"key": "UPSTASH_REDIS_REST_TOKEN", "required": True},
+    {"key": "SUPABASE_URL", "required": True, "regex": url_regex, "error": "Must be a valid HTTP/HTTPS URL"},
+    {"key": "SUPABASE_SERVICE_ROLE_KEY", "required": True},
+    {"key": "SUPABASE_ANON_KEY", "required": True}
 ]
 
 validation_failed = False
@@ -272,6 +275,22 @@ async def run_diagnostics():
     except Exception as e:
         exit_code = 1
         log_fail("Deepgram authentication failed", e)
+
+    # 6. Supabase Check
+    try:
+        from supabase import create_client
+        supabase = create_client(values["SUPABASE_URL"], values["SUPABASE_SERVICE_ROLE_KEY"])
+        
+        # Check scenarios table
+        scenarios_res = supabase.table("scenarios").select("id").limit(1).execute()
+        log_ok("Supabase connected and 'scenarios' table is accessible")
+        
+        # Check memories table
+        memories_res = supabase.table("memories").select("id").limit(1).execute()
+        log_ok("Supabase connected and 'memories' table is accessible")
+    except Exception as e:
+        exit_code = 1
+        log_fail("Supabase connectivity or authentication failed", e)
 
     # Final summary report
     print("\n-----------------------------------------")

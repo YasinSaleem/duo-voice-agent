@@ -33,3 +33,11 @@ export async function cacheResumeTurns(sessionId: string, turns: any[]): Promise
   // Set value with an explicit TTL of 300 seconds (5 minutes)
   await redis.set(key, payload, { ex: 300 });
 }
+
+/**
+ * Enqueues a long-term memory compression job to the tail of the 'memory_jobs' list.
+ */
+export async function enqueueMemoryJob(sessionId: string, userId: string): Promise<void> {
+  const payload = JSON.stringify({ sessionId, userId });
+  await redis.rpush('memory_jobs', payload);
+}

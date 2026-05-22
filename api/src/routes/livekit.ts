@@ -101,10 +101,10 @@ router.post('/webhook', async (req: Request, res: Response): Promise<any> => {
         spawnedRooms.delete(session_id);
       }, 60000);
 
-      // Fetch session to identify scenario_id
+      // Fetch session to identify scenario_id and user_id
       const { data: session, error: sessionError } = await supabaseAdmin
         .from('sessions')
-        .select('scenario_id, status')
+        .select('user_id, scenario_id, status')
         .eq('id', session_id)
         .single();
 
@@ -135,6 +135,43 @@ router.post('/webhook', async (req: Request, res: Response): Promise<any> => {
         });
       }
 
+      // Fetch the last 3 memories for this user to synthesize a personalization profile
+      const { data: pastMemories } = await supabaseAdmin
+        .from('memories')
+        .select('scenario_title, summary, grammar_insights, vocabulary_learned, key_takeaways')
+        .eq('user_id', session.user_id)
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      let memoryInstruction = "";
+      if (pastMemories && pastMemories.length > 0) {
+        const weakGrammar = new Set<string>();
+        const wordsPracticed = new Set<string>();
+        const topTips: string[] = [];
+
+        pastMemories.forEach(mem => {
+          if (Array.isArray(mem.grammar_insights)) {
+            mem.grammar_insights
+              .filter((g: any) => g.status === "Needs Work")
+              .forEach((g: any) => weakGrammar.add(g.topic));
+          }
+          if (Array.isArray(mem.vocabulary_learned)) {
+            mem.vocabulary_learned.forEach((v: any) => wordsPracticed.add(v.spanish));
+          }
+          if (Array.isArray(mem.key_takeaways)) {
+            mem.key_takeaways.forEach((t: string) => topTips.push(t));
+          }
+        });
+
+        memoryInstruction = `\n\n[LEARNER PERSONALIZATION PROFILE]
+- Weak Grammar Areas to Target: ${Array.from(weakGrammar).join(', ') || 'None flagged'}
+- Vocabulary Previously Practiced: ${Array.from(wordsPracticed).slice(0, 10).join(', ')}
+- Pedagogical Recommendations: ${topTips.slice(0, 3).join('; ')}
+- Personalization Guideline: Gently weave in previously practiced vocabulary and test them on their weak grammar topics. Maintain the scenario setting.`;
+      }
+
+      const finalSystemPrompt = `${scenario.system_prompt}${memoryInstruction}`;
+
       // Build absolute path to agent conversational pipeline script
       const agentPath = process.env.AGENT_PATH
         ? path.resolve(process.env.AGENT_PATH, 'pipeline.py')
@@ -155,8 +192,13 @@ router.post('/webhook', async (req: Request, res: Response): Promise<any> => {
       const logFilePath = path.join(logDir, 'agent_runtime.log');
       const logFd = fs.openSync(logFilePath, 'a');
 
-      const child = spawn(pythonBinary, [agentPath, session_id, scenario.system_prompt], {
+      // Use env variables to pass the system prompt cleanly instead of CLI args to avoid escaping bugs
+      const child = spawn(pythonBinary, [agentPath, session_id], {
         detached: true,
+        env: {
+          ...process.env,
+          AGENT_SYSTEM_PROMPT: finalSystemPrompt
+        },
         stdio: ['ignore', logFd, logFd]
       });
       child.unref();

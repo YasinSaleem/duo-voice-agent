@@ -63,7 +63,7 @@ function sanitizeUrl(url: string): string {
 function maskSecrets(text: string): string {
   let masked = text;
   masked = masked.replace(/(mongodb(?:\+srv)?:\/\/[^:]+:)([^@]+)(@)/ig, '$1***$3');
-  for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'LIVEKIT_API_SECRET', 'UPSTASH_REDIS_REST_TOKEN', 'MONGO_URI']) {
+  for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY', 'LIVEKIT_API_SECRET', 'UPSTASH_REDIS_REST_TOKEN', 'MONGO_URI']) {
     const secret = process.env[key];
     if (secret && secret.length > 4) {
       masked = masked.split(secret).join('***');
@@ -106,6 +106,10 @@ const expectedEnvVars: EnvVar[] = [
   },
   {
     key: 'SUPABASE_SERVICE_ROLE_KEY',
+    required: true,
+  },
+  {
+    key: 'SUPABASE_ANON_KEY',
     required: true,
   },
   {
@@ -213,7 +217,6 @@ async function runDiagnostics() {
     const response = (await withTimeout(Promise.resolve(supabaseCheck), 8000, 'Connection to Supabase timed out after 8s')) as any;
 
     if (response.error) {
-      // 42P01 is Postgres error for "relation does not exist" (meaning scenarios table does not exist)
       if (response.error.code === '42P01') {
         logWarn(`Supabase reachable and authenticated, but 'scenarios' table is missing. Did you run migrations?`);
       } else {
@@ -221,6 +224,20 @@ async function runDiagnostics() {
       }
     } else {
       logOk(`Supabase connected and 'scenarios' table exists`);
+    }
+
+    // Real client query to check memories table
+    const memoriesCheck = supabase.from('memories').select('id').limit(1);
+    const memoriesResponse = (await withTimeout(Promise.resolve(memoriesCheck), 8000, 'Connection to Supabase memories table timed out after 8s')) as any;
+
+    if (memoriesResponse.error) {
+      if (memoriesResponse.error.code === '42P01') {
+        logWarn(`Supabase reachable and authenticated, but 'memories' table is missing. Did you run migrations?`);
+      } else {
+        throw memoriesResponse.error;
+      }
+    } else {
+      logOk(`Supabase connected and 'memories' table exists`);
     }
   } catch (err: any) {
     exitCode = 1;

@@ -89,7 +89,10 @@ export async function authMiddleware(
     }
 
     // Attach user information to request (cast to AuthenticatedRequest which guarantees req.user)
-    (req as AuthenticatedRequest).user = { id: user.id };
+    (req as AuthenticatedRequest).user = { 
+      id: user.id,
+      accessToken: token
+    };
     next();
   } catch (err: any) {
     res.status(500).json({

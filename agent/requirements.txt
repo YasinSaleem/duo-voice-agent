@@ -4,3 +4,4 @@ pymongo
 motor
 upstash-redis
 python-dotenv
+supabase

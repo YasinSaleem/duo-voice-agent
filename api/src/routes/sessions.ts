@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from '../types';
 import { supabaseAdmin } from '../db/supabase';
 import { getTurnsCollection } from '../db/mongo';
 import { createLiveKitToken } from '../services/livekit';
-import { cacheResumeTurns } from '../services/redis';
+import { cacheResumeTurns, enqueueMemoryJob } from '../services/redis';
 
 const router = Router();
 
@@ -289,6 +289,16 @@ router.patch('/:session_id/status', async (req: Request, res: Response): Promise
 
     if (updateError || !updatedSessions || updatedSessions.length === 0) {
       return sendError(res, 500, 'DATABASE_ERROR', 'Failed to update session status.');
+    }
+
+    // If status transitioned to completed, enqueue a memory generation job
+    if (status === 'completed') {
+      try {
+        await enqueueMemoryJob(session_id, authReq.user.id);
+        console.log(`[Sessions] Enqueued memory job for session ${session_id}`);
+      } catch (err) {
+        console.error(`[Sessions] Failed to enqueue memory job for session ${session_id}:`, err);
+      }
     }
 
     return res.status(200).json({ ok: true });

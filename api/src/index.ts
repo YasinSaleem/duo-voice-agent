@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import 'dotenv/config';
 import sessionRoutes from './routes/sessions';
 import livekitRoutes from './routes/livekit';
+import authRoutes from './routes/auth';
 
 import path from 'path';
 
@@ -26,6 +27,9 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Session Routes
 app.use('/v1/sessions', sessionRoutes);
+
+// Auth Routes
+app.use('/v1/auth', authRoutes);
 
 // LiveKit Webhook Route
 app.use('/internal/livekit', livekitRoutes);

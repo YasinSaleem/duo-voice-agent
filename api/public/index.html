@@ -700,9 +700,344 @@
     .toast.error { border-left: 4px solid var(--danger); }
     .toast.warning { border-left: 4px solid var(--warning); }
 
+    /* ── AUTHENTICATION STYLES ── */
+    .auth-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: var(--bg-darker);
+      background-image: 
+        radial-gradient(at 10% 10%, rgba(99, 102, 241, 0.15) 0px, transparent 45%),
+        radial-gradient(at 90% 90%, rgba(168, 85, 247, 0.15) 0px, transparent 45%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 99999;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+    .auth-screen.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 440px;
+      margin: 1.5rem;
+      padding: 3rem 2.5rem;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+    }
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 1.5rem;
+    }
+    .auth-tab {
+      flex: 1;
+      text-align: center;
+      padding: 0.75rem;
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      border-bottom: 2px solid transparent;
+    }
+    .auth-tab.active {
+      color: var(--text-inverse);
+      border-bottom-color: var(--primary);
+      font-weight: 700;
+      text-shadow: 0 0 10px var(--primary-glow);
+    }
+
+    /* ── PROGRESS & TIMELINE DRAWER STYLES ── */
+    .progress-drawer {
+      position: fixed;
+      right: -460px;
+      top: 0;
+      width: 460px;
+      height: 100vh;
+      background: var(--bg-dark);
+      border-left: 1px solid var(--border-color);
+      z-index: 10000;
+      box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+      transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      padding: 2.5rem 2rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .progress-drawer.open {
+      right: 0;
+    }
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .btn-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 2rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: var(--transition-smooth);
+    }
+    .btn-close:hover {
+      color: var(--text-main);
+    }
+    .drawer-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .drawer-overlay.active {
+      display: block;
+      opacity: 1;
+    }
+    .drawer-content {
+      flex: 1;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 2rem;
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-top: 0.25rem;
+    }
+    .section-title {
+      font-size: 1rem;
+      font-family: var(--font-display);
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-inverse);
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding-bottom: 0.25rem;
+    }
+    .vocab-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .vocab-chip {
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      color: #818cf8;
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .vocab-chip span {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .vocab-empty, .grammar-empty {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    .grammar-insights-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .grammar-insight-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .grammar-insight-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .grammar-insight-topic {
+      font-weight: 600;
+      color: var(--text-inverse);
+      font-size: 0.9rem;
+    }
+    .grammar-insight-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 99px;
+    }
+    .grammar-insight-badge.proficient {
+      color: var(--success);
+      background: var(--success-bg);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .grammar-insight-badge.needs-work {
+      color: var(--warning);
+      background: var(--warning-bg);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+    .grammar-insight-details {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+    .memories-timeline-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-top: 0.5rem;
+    }
+    .timeline-item {
+      border-left: 2px solid var(--primary);
+      padding-left: 1.25rem;
+      margin-left: 0.5rem;
+      position: relative;
+      padding-bottom: 0.5rem;
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -6px;
+      top: 4px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 8px var(--primary);
+    }
+    .timeline-item-title {
+      font-weight: 700;
+      color: var(--text-inverse);
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+    .timeline-item-date {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+    .timeline-item-summary {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
   </style>
 </head>
 <body>
+
+  <!-- ── AUTHENTICATION COVER ── -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card glass-card">
+      <div class="logo-container" style="justify-content: center; margin-bottom: 2rem;">
+        <div class="logo-icon">V</div>
+        <div class="logo-text">DuoVoice<span>Tutor</span></div>
+      </div>
+      
+      <div class="auth-tabs">
+        <div id="tab-login" class="auth-tab active">Sign In</div>
+        <div id="tab-signup" class="auth-tab">Sign Up</div>
+      </div>
+      
+      <form id="auth-form" style="margin-top: 1.5rem;">
+        <div class="form-group">
+          <label for="auth-email">Email Address</label>
+          <input type="email" id="auth-email" required placeholder="you@example.com">
+        </div>
+        <div class="form-group" id="password-group">
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" required placeholder="••••••••" minlength="6">
+        </div>
+        
+        <button type="submit" id="btn-auth-submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem; padding: 1rem;">
+          Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── PROGRESS & MEMORIES DRAWER ── -->
+  <div id="progress-drawer" class="progress-drawer">
+    <div class="drawer-header">
+      <h3 style="font-size: 1.5rem; font-family: var(--font-display); color: var(--text-inverse);">Learning Progress</h3>
+      <button id="btn-close-drawer" class="btn-close">&times;</button>
+    </div>
+    
+    <div class="drawer-content">
+      <!-- Dynamic Stats summary -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-num" id="stat-sessions-count">0</div>
+          <div class="stat-label">Sessions</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="stat-vocab-count">0</div>
+          <div class="stat-label">Words Learned</div>
+        </div>
+      </div>
+
+      <!-- Tag Cloud: Vocabulary Learned -->
+      <h4 class="section-title">Vocabulary Learned</h4>
+      <div id="vocab-cloud" class="vocab-cloud">
+        <span class="vocab-empty">No vocabulary learned yet. Complete your first session!</span>
+      </div>
+
+      <!-- Grid list: Grammar Insights -->
+      <h4 class="section-title">Grammar Focus Areas</h4>
+      <div id="grammar-insights-list" class="grammar-insights-list">
+        <span class="grammar-empty">No grammar assessments yet.</span>
+      </div>
+
+      <!-- Timeline of session summaries -->
+      <h4 class="section-title">Session History & Memories</h4>
+      <div id="memories-timeline" class="memories-timeline-list">
+        <span class="vocab-empty">No sessions recorded yet.</span>
+      </div>
+    </div>
+  </div>
+  <div id="drawer-overlay" class="drawer-overlay"></div>
 
   <div class="container">
     
@@ -713,9 +1048,21 @@
         <div class="logo-text">DuoVoice<span>Tutor</span></div>
       </div>
       
-      <div class="status-badge">
-        <div id="api-status-dot" class="status-dot"></div>
-        <span id="api-status-text">Server Offline</span>
+      <div style="display: flex; align-items: center; gap: 1.25rem;">
+        <div id="user-header-controls" class="hidden" style="display: flex; align-items: center; gap: 1rem;">
+          <span id="user-email-display" style="font-size: 0.9rem; color: var(--text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+          <button id="btn-view-progress" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">
+            📈 View Progress
+          </button>
+          <button id="btn-logout" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(239, 68, 68, 0.3); color: #ef4444;">
+            Sign Out
+          </button>
+        </div>
+
+        <div class="status-badge">
+          <div id="api-status-dot" class="status-dot"></div>
+          <span id="api-status-text">Server Offline</span>
+        </div>
       </div>
     </header>
 
@@ -833,7 +1180,9 @@
 
     // ── STATE MANAGEMENT ──
     const state = {
-      authToken: 'demo-token',
+      authToken: null,
+      supabase: null,
+      currentUser: null,
       scenarios: [],
       selectedScenarioId: null,
       sessionId: null,
@@ -851,11 +1200,11 @@
     };
 
     // ── ON STARTUP ──
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', async () => {
       console.log("DOMContentLoaded: Initializing playground...");
       checkApiHealth();
       setupEventListeners();
-      fetchScenarios();
+      await initSupabase();
     });
 
     // ── SERVER HEALTHCHECK ──
@@ -879,6 +1228,49 @@
       }
     }
 
+    // ── SUPABASE AUTH INITIALIZATION ──
+    async function initSupabase() {
+      try {
+        console.log("Initializing Supabase Auth Client...");
+        const res = await fetch('/v1/auth/config');
+        if (!res.ok) {
+          throw new Error('Failed to retrieve Supabase client configuration from API backend.');
+        }
+        const config = await res.json();
+        
+        // Initialize public Supabase client
+        state.supabase = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+        console.log("Supabase Auth Client initialized successfully.");
+        
+        // Listen to Auth State changes
+        state.supabase.auth.onAuthStateChange(async (event, session) => {
+          console.log(`Supabase Auth state changed: ${event}`);
+          if (session) {
+            state.authToken = session.access_token;
+            state.currentUser = session.user;
+            
+            // Show logged-in UI
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('user-header-controls').classList.remove('hidden');
+            document.getElementById('user-email-display').textContent = session.user.email;
+            
+            // Load scenarios
+            fetchScenarios();
+          } else {
+            state.authToken = null;
+            state.currentUser = null;
+            
+            // Show auth UI
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('user-header-controls').classList.add('hidden');
+          }
+        });
+      } catch (err) {
+        console.error("Supabase Auth Init Failed:", err);
+        showToast(`Auth Initialization Error: ${err.message}`, 'error');
+      }
+    }
+
     // ── EVENT ROUTERS ──
     function setupEventListeners() {
       // Start / Stop sessions
@@ -886,6 +1278,224 @@
       document.getElementById('btn-toggle-mic').addEventListener('click', handleToggleMute);
       document.getElementById('btn-toggle-pause').addEventListener('click', handleTogglePause);
       document.getElementById('btn-complete-session').addEventListener('click', handleCompleteSession);
+
+      // Auth tabs switching
+      const tabLogin = document.getElementById('tab-login');
+      const tabSignup = document.getElementById('tab-signup');
+      const btnAuthSubmit = document.getElementById('btn-auth-submit');
+      let currentAuthMode = 'login'; // 'login' or 'signup'
+      
+      tabLogin.addEventListener('click', () => {
+        tabLogin.classList.add('active');
+        tabSignup.classList.remove('active');
+        btnAuthSubmit.textContent = 'Sign In';
+        currentAuthMode = 'login';
+      });
+
+      tabSignup.addEventListener('click', () => {
+        tabSignup.classList.add('active');
+        tabLogin.classList.remove('active');
+        btnAuthSubmit.textContent = 'Create Account';
+        currentAuthMode = 'signup';
+      });
+
+      // Submit Auth Form
+      document.getElementById('auth-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('auth-email').value;
+        const password = document.getElementById('auth-password').value;
+        
+        btnAuthSubmit.disabled = true;
+        btnAuthSubmit.textContent = currentAuthMode === 'login' ? 'Signing in...' : 'Registering...';
+        
+        try {
+          if (currentAuthMode === 'login') {
+            const { error } = await state.supabase.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            showToast('Welcome back!', 'success');
+          } else {
+            const { error, data } = await state.supabase.auth.signUp({ email, password });
+            if (error) throw error;
+            
+            // Check if user is automatically logged in or needs verification
+            if (data.session) {
+              showToast('Account created and logged in!', 'success');
+            } else {
+              showToast('Verification email sent! Please check your inbox.', 'warning');
+            }
+          }
+        } catch (err) {
+          console.error('[Auth Error]:', err);
+          showToast(err.message, 'error');
+        } finally {
+          btnAuthSubmit.disabled = false;
+          btnAuthSubmit.textContent = currentAuthMode === 'login' ? 'Sign In' : 'Create Account';
+        }
+      });
+
+      // Logout button
+      document.getElementById('btn-logout').addEventListener('click', async () => {
+        try {
+          await state.supabase.auth.signOut();
+          showToast('Signed out successfully.', 'success');
+          window.location.reload();
+        } catch (err) {
+          showToast(`Sign out failed: ${err.message}`, 'error');
+        }
+      });
+
+      // Progress drawer toggle
+      document.getElementById('btn-view-progress').addEventListener('click', toggleProgressDrawer);
+      document.getElementById('btn-close-drawer').addEventListener('click', toggleProgressDrawer);
+      document.getElementById('drawer-overlay').addEventListener('click', toggleProgressDrawer);
+    }
+
+    // ── PROGRESS DRAWER TOGGLERS ──
+    async function toggleProgressDrawer() {
+      const drawer = document.getElementById('progress-drawer');
+      const overlay = document.getElementById('drawer-overlay');
+      const isOpen = drawer.classList.contains('open');
+      
+      if (!isOpen) {
+        // Fetch memories and render them
+        await fetchAndRenderMemories();
+        drawer.classList.add('open');
+        overlay.classList.add('active');
+        overlay.style.display = 'block';
+      } else {
+        drawer.classList.remove('open');
+        overlay.classList.remove('active');
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 300);
+      }
+    }
+
+    // ── PROGRESS & MEMORIES RENDERING ──
+    async function fetchAndRenderMemories() {
+      try {
+        console.log("fetchAndRenderMemories: Loading user memory logs...");
+        const res = await fetch('/v1/auth/memories', {
+          headers: {
+            'Authorization': `Bearer ${state.authToken}`
+          }
+        });
+        
+        if (!res.ok) {
+          throw new Error('Failed to retrieve memory timeline.');
+        }
+        
+        const memories = await res.json();
+        console.log(`fetchAndRenderMemories: Retrieved ${memories.length} memory entries.`, memories);
+        
+        // 1. Update stats
+        document.getElementById('stat-sessions-count').textContent = memories.length;
+        
+        // 2. Aggregate vocabulary learned
+        const vocabMap = new Map();
+        memories.forEach(mem => {
+          if (Array.isArray(mem.vocabulary_learned)) {
+            mem.vocabulary_learned.forEach(v => {
+              if (v && v.spanish && v.english) {
+                vocabMap.set(v.spanish.toLowerCase().trim(), v.english.toLowerCase().trim());
+              }
+            });
+          }
+        });
+        
+        document.getElementById('stat-vocab-count').textContent = vocabMap.size;
+        
+        const vocabCloud = document.getElementById('vocab-cloud');
+        vocabCloud.innerHTML = '';
+        if (vocabMap.size === 0) {
+          vocabCloud.innerHTML = '<span class="vocab-empty">No vocabulary learned yet. Complete your first session!</span>';
+        } else {
+          vocabMap.forEach((english, spanish) => {
+            const chip = document.createElement('div');
+            chip.className = 'vocab-chip';
+            chip.innerHTML = `${escapeHtml(spanish)} <span>(${escapeHtml(english)})</span>`;
+            vocabCloud.appendChild(chip);
+          });
+        }
+        
+        // 3. Aggregate grammar insights
+        const grammarMap = new Map();
+        memories.forEach(mem => {
+          if (Array.isArray(mem.grammar_insights)) {
+            mem.grammar_insights.forEach(insight => {
+              if (insight && insight.topic) {
+                const topicKey = insight.topic.trim();
+                const current = grammarMap.get(topicKey);
+                if (!current || insight.status === 'Needs Work') {
+                  grammarMap.set(topicKey, {
+                    status: insight.status || 'Proficient',
+                    details: insight.details || ''
+                  });
+                }
+              }
+            });
+          }
+        });
+        
+        const grammarList = document.getElementById('grammar-insights-list');
+        grammarList.innerHTML = '';
+        if (grammarMap.size === 0) {
+          grammarList.innerHTML = '<span class="grammar-empty">No grammar focus topics analyzed yet.</span>';
+        } else {
+          grammarMap.forEach((info, topic) => {
+            const card = document.createElement('div');
+            card.className = 'grammar-insight-card';
+            
+            const badgeClass = info.status === 'Proficient' ? 'proficient' : 'needs-work';
+            const badgeText = info.status === 'Proficient' ? 'Proficient' : 'Needs Work';
+            
+            card.innerHTML = `
+              <div class="grammar-insight-header">
+                <span class="grammar-insight-topic">${escapeHtml(topic)}</span>
+                <span class="grammar-insight-badge ${badgeClass}">${badgeText}</span>
+              </div>
+              <div class="grammar-insight-details">${escapeHtml(info.details)}</div>
+            `;
+            grammarList.appendChild(card);
+          });
+        }
+        
+        // 4. Render timeline memories
+        const timelineList = document.getElementById('memories-timeline');
+        timelineList.innerHTML = '';
+        if (memories.length === 0) {
+          timelineList.innerHTML = '<span class="vocab-empty">No sessions completed yet. Start learning to record memories!</span>';
+        } else {
+          memories.forEach(mem => {
+            const item = document.createElement('div');
+            item.className = 'timeline-item';
+            
+            const dateStr = new Date(mem.created_at).toLocaleDateString(undefined, {
+              year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+            
+            let takeawaysHtml = '';
+            if (Array.isArray(mem.key_takeaways) && mem.key_takeaways.length > 0) {
+              takeawaysHtml = `
+                <ul style="margin-top: 0.5rem; padding-left: 1.25rem; font-size: 0.8rem; color: var(--text-muted);">
+                  ${mem.key_takeaways.map(t => `<li>${escapeHtml(t)}</li>`).join('')}
+                </ul>
+              `;
+            }
+            
+            item.innerHTML = `
+              <div class="timeline-item-title">${escapeHtml(mem.scenario_title)}</div>
+              <div class="timeline-item-date">${dateStr}</div>
+              <div class="timeline-item-summary">${escapeHtml(mem.summary)}</div>
+              ${takeawaysHtml}
+            `;
+            timelineList.appendChild(item);
+          });
+        }
+      } catch (err) {
+        console.error("fetchAndRenderMemories: Error:", err);
+        showToast("Could not sync learning progress.", "error");
+      }
     }
 
     // ── SCENARIOS LOADER ──
