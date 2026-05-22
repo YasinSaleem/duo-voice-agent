@@ -36,6 +36,32 @@ export async function createLiveKitToken(roomName: string, participantIdentity: 
 }
 
 /**
+ * Removes the tutor agent participant from a LiveKit room, if present.
+ * Used to ensure pause/resume spawns a fresh agent without duplication.
+ */
+export async function removeAgentParticipant(session_id: string): Promise<boolean> {
+  try {
+    const { RoomServiceClient } = require('livekit-server-sdk');
+    const svc = new RoomServiceClient(
+      process.env.LIVEKIT_URL!,
+      apiKey!,
+      apiSecret!
+    );
+    const participants = await svc.listParticipants(session_id);
+    const hasAgent = participants.some((p: any) => p.identity === 'agent');
+    if (!hasAgent) {
+      return false;
+    }
+    await svc.removeParticipant(session_id, 'agent');
+    console.log(`[Agent Remove] Removed agent participant from room ${session_id}`);
+    return true;
+  } catch (err) {
+    console.warn(`[Agent Remove] Failed to remove agent from room ${session_id}:`, err);
+    return false;
+  }
+}
+
+/**
  * Spawns the background Pipecat Python voice agent process for a session.
  * Features an atomic Redis-backed SETNX lock with 60s TTL to prevent concurrent spawns.
  * Lock is allowed to naturally expire after 60s on success (acts as debounce),
@@ -96,7 +122,24 @@ export async function spawnAgent(session_id: string): Promise<boolean> {
       throw new Error(`Scenario ${session.scenario_id} prompt not found in database.`);
     }
 
-    // 5. Fetch the last 3 memories for this user to compile the Personalized Learner Profile
+    // 5. Fetch lesson state checkpoint (lightweight resume continuity)
+    let lessonStateInstruction = "";
+    try {
+      const { data: lessonState } = await supabaseAdmin
+        .from('lesson_states')
+        .select('introduced_items, last_item, pause_at, interrupted_turn_text')
+        .eq('session_id', session_id)
+        .single();
+
+      if (lessonState) {
+        const serialized = JSON.stringify(lessonState);
+        lessonStateInstruction = `\n\n[LESSON_STATE]\n${serialized}`;
+      }
+    } catch (stateErr) {
+      console.warn(`[Agent Spawn] Failed to load lesson state for session ${session_id}:`, stateErr);
+    }
+
+    // 6. Fetch the last 3 memories for this user to compile the Personalized Learner Profile
     const { data: pastMemories } = await supabaseAdmin
       .from('memories')
       .select('scenario_title, summary, grammar_insights, vocabulary_learned, key_takeaways')
@@ -131,9 +174,9 @@ export async function spawnAgent(session_id: string): Promise<boolean> {
 - Personalization Guideline: Gently weave in previously practiced vocabulary and test them on their weak grammar topics. Maintain the scenario setting.`;
     }
 
-    const finalSystemPrompt = `${scenario.system_prompt}${memoryInstruction}`;
+    const finalSystemPrompt = `${scenario.system_prompt}${lessonStateInstruction}${memoryInstruction}`;
 
-    // 6. Build absolute paths for spawning python agent conversational pipeline process
+    // 7. Build absolute paths for spawning python agent conversational pipeline process
     const agentPath = process.env.AGENT_PATH
       ? path.resolve(process.env.AGENT_PATH, 'pipeline.py')
       : path.resolve(__dirname, '../../../agent/pipeline.py');

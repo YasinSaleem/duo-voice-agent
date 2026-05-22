@@ -41,3 +41,21 @@ export async function enqueueMemoryJob(sessionId: string, userId: string): Promi
   const payload = JSON.stringify({ sessionId, userId });
   await redis.rpush('memory_jobs', payload);
 }
+
+export async function getAgentPid(sessionId: string): Promise<number | null> {
+  const raw = await redis.get(`agent_pid:${sessionId}`);
+  if (!raw) return null;
+  const parsed = parseInt(String(raw), 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+export async function clearAgentPid(sessionId: string): Promise<void> {
+  await redis.del(`agent_pid:${sessionId}`);
+}
+
+export async function getAgentSpeakingText(sessionId: string): Promise<string | null> {
+  const speaking = await redis.get(`agent_speaking:${sessionId}`);
+  if (!speaking) return null;
+  const text = await redis.get(`agent_speaking_text:${sessionId}`);
+  return text ? String(text) : null;
+}

@@ -3,8 +3,8 @@ import { authMiddleware } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
 import { supabaseAdmin } from '../db/supabase';
 import { getTurnsCollection } from '../db/mongo';
-import { createLiveKitToken, spawnAgent } from '../services/livekit';
-import { cacheResumeTurns, enqueueMemoryJob } from '../services/redis';
+import { createLiveKitToken, removeAgentParticipant, spawnAgent } from '../services/livekit';
+import { cacheResumeTurns, enqueueMemoryJob, getAgentPid, clearAgentPid, getAgentSpeakingText } from '../services/redis';
 
 const router = Router();
 
@@ -71,7 +71,7 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     // 1. Verify scenario exists
     const { data: scenario, error: scenarioError } = await supabaseAdmin
       .from('scenarios')
-      .select('id')
+      .select('id, title')
       .eq('id', scenario_id)
       .single();
 
@@ -95,10 +95,22 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       return sendError(res, 500, 'DATABASE_ERROR', 'Failed to create a new session.');
     }
 
-    // 3. Mint WebRTC token
+    // 3. Create initial lesson state checkpoint
+    try {
+      await supabaseAdmin
+        .from('lesson_states')
+        .insert({
+          session_id: session.id,
+          user_id: authReq.user.id
+        });
+    } catch (lessonErr) {
+      console.warn('[Sessions] Failed to create initial lesson state:', lessonErr);
+    }
+
+    // 4. Mint WebRTC token
     const token = await createLiveKitToken(session.id, authReq.user.id);
 
-    // 4. Spawn the Python tutor agent process in the background immediately
+    // 5. Spawn the Python tutor agent process in the background immediately
     try {
       console.log(`[Sessions Route] Starting session: spawning agent for session ${session.id}...`);
       await spawnAgent(session.id);
@@ -161,11 +173,36 @@ router.post('/:session_id/resume', async (req: Request, res: Response): Promise<
       .limit(10)
       .toArray();
 
-    const turns = rawTurns.map(t => ({
-      role: t.role,
-      transcript: t.transcript,
-      timestamp: t.timestamp
-    }));
+    // 2b. Load lesson state checkpoint (pause marker and interrupted turn)
+    let pauseAt: Date | null = null;
+    let interruptedTurnText: string | null = null;
+    try {
+      const { data: lessonState } = await supabaseAdmin
+        .from('lesson_states')
+        .select('pause_at, interrupted_turn_text')
+        .eq('session_id', session_id)
+        .single();
+      if (lessonState?.pause_at) {
+        pauseAt = new Date(lessonState.pause_at);
+      }
+      if (lessonState?.interrupted_turn_text) {
+        interruptedTurnText = lessonState.interrupted_turn_text;
+      }
+    } catch (stateErr) {
+      console.warn('[Sessions] Failed to load lesson state for resume:', stateErr);
+    }
+
+    const turns = rawTurns
+      .filter(t => {
+        if (pauseAt && t.timestamp && t.timestamp > pauseAt) return false;
+        if (interruptedTurnText && t.role === 'agent' && t.transcript === interruptedTurnText) return false;
+        return true;
+      })
+      .map(t => ({
+        role: t.role,
+        transcript: t.transcript,
+        timestamp: t.timestamp
+      }));
 
     // 3. Cache the serialized turns array in Redis with a 300s TTL
     await cacheResumeTurns(session_id, turns);
@@ -183,10 +220,41 @@ router.post('/:session_id/resume', async (req: Request, res: Response): Promise<
       return sendError(res, 400, 'ALREADY_ACTIVE', 'Session activation failed. Session may have been activated concurrently.');
     }
 
-    // 5. Mint LiveKit WebRTC room token
+    // 5. Clear pause markers in lesson state
+    try {
+      await supabaseAdmin
+        .from('lesson_states')
+        .update({
+          pause_at: null,
+          interrupted_turn_text: null
+        })
+        .eq('session_id', session_id)
+        .eq('user_id', authReq.user.id);
+    } catch (lessonErr) {
+      console.warn('[Sessions] Failed to clear lesson pause markers:', lessonErr);
+    }
+
+    // 6. Mint LiveKit WebRTC room token
     const token = await createLiveKitToken(session_id, authReq.user.id);
 
-    // 6. Spawn the Python tutor agent process in the background immediately
+    // 7. Ensure prior agent is removed before spawning a fresh one
+    try {
+      await removeAgentParticipant(session_id);
+    } catch (err) {
+      console.warn(`[Sessions Route] Failed to remove agent before resume spawn:`, err);
+    }
+
+    try {
+      const pid = await getAgentPid(session_id);
+      if (pid) {
+        process.kill(pid, 'SIGTERM');
+        await clearAgentPid(session_id);
+      }
+    } catch (err) {
+      console.warn('[Sessions Route] Failed to terminate agent process before resume:', err);
+    }
+
+    // 8. Spawn the Python tutor agent process in the background immediately
     try {
       console.log(`[Sessions Route] Resuming session: spawning agent for session ${session_id}...`);
       await spawnAgent(session_id);
@@ -306,6 +374,60 @@ router.patch('/:session_id/status', async (req: Request, res: Response): Promise
 
     if (updateError || !updatedSessions || updatedSessions.length === 0) {
       return sendError(res, 500, 'DATABASE_ERROR', 'Failed to update session status.');
+    }
+
+    // If status transitioned to paused, stop agent and persist lesson checkpoint
+    if (status === 'paused') {
+      try {
+        await removeAgentParticipant(session_id);
+      } catch (err) {
+        console.warn('[Sessions] Failed to remove agent on pause:', err);
+      }
+
+      try {
+        const pid = await getAgentPid(session_id);
+        if (pid) {
+          process.kill(pid, 'SIGTERM');
+          await clearAgentPid(session_id);
+        }
+      } catch (err) {
+        console.warn('[Sessions] Failed to terminate agent process on pause:', err);
+      }
+
+      let interruptedTurnText: string | null = null;
+      try {
+        const speakingText = await getAgentSpeakingText(session_id);
+        if (speakingText) {
+          interruptedTurnText = speakingText;
+        }
+
+        const turnsCollection = await getTurnsCollection();
+        const lastTurns = await turnsCollection
+          .find({ session_id })
+          .sort({ timestamp: -1 })
+          .limit(2)
+          .toArray();
+
+        const lastTurn = lastTurns[0];
+        if (!interruptedTurnText && lastTurn && lastTurn.role === 'agent') {
+          interruptedTurnText = lastTurn.transcript || null;
+        }
+      } catch (turnErr) {
+        console.warn('[Sessions] Failed to inspect last turns for pause:', turnErr);
+      }
+
+      try {
+        await supabaseAdmin
+          .from('lesson_states')
+          .update({
+            pause_at: new Date().toISOString(),
+            interrupted_turn_text: interruptedTurnText
+          })
+          .eq('session_id', session_id)
+          .eq('user_id', authReq.user.id);
+      } catch (lessonErr) {
+        console.warn('[Sessions] Failed to persist lesson pause checkpoint:', lessonErr);
+      }
     }
 
     // If status transitioned to completed, enqueue a memory generation job

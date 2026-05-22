@@ -34,6 +34,7 @@ from pipecat.frames.frames import Frame, TranscriptionFrame, TTSSpeakFrame, EndF
 from motor.motor_asyncio import AsyncIOMotorClient
 from upstash_redis import Redis
 from context_loader import load_prior_context
+from supabase import create_client, Client
 
 # ── Database & Redis Connections ──────────────────────────────────────────────
 tls_kwargs = {}
@@ -50,6 +51,15 @@ redis = Redis(
     url=os.environ["UPSTASH_REDIS_REST_URL"],
     token=os.environ["UPSTASH_REDIS_REST_TOKEN"]
 )
+
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+supabase: Client | None = None
+if supabase_url and supabase_key:
+    supabase = create_client(supabase_url, supabase_key)
+
+LESSON_TAG_START = "<lesson_item>"
+LESSON_TAG_END = "</lesson_item>"
 
 GLOBAL_TUTOR_POLICY = """
 You are a warm, patient, beginner-first Spanish tutor for a live voice lesson.
@@ -69,6 +79,16 @@ Core behavior:
 - If the learner goes off-topic, respond briefly in English and return to the current step.
 - Do not give long vocabulary lectures unless explicitly asked.
 - Do not invent phonetic spellings unless the learner explicitly asks for pronunciation help.
+
+Lesson checkpointing (structured, no guessing):
+- When you introduce a NEW lesson item (vocabulary or phrase) for the first time, append a metadata tag on a new line:
+    <lesson_item>{"type":"vocab"|"phrase","spanish":"...","english":"..."}</lesson_item>
+- Only emit this tag for the first introduction of a lesson item.
+- Never speak or explain the tag; it will be removed before audio output.
+
+Resume recap behavior:
+- If a lesson checkpoint exists (introduced_items/last_item), begin by briefly recalling the last_item and asking the learner to repeat or explain it.
+- Then continue with the next lesson item.
 
 Correction style:
 - Focus on helping spoken Spanish.
@@ -123,19 +143,175 @@ def utterance_flush_delay(text: str) -> float:
         return 0.60
     return 2.00
 
+def strip_lesson_item_tags(text: str) -> str:
+    if LESSON_TAG_START not in text:
+        return text
+    output = []
+    remaining = text
+    while True:
+        start_idx = remaining.find(LESSON_TAG_START)
+        if start_idx == -1:
+            output.append(remaining)
+            break
+        output.append(remaining[:start_idx])
+        end_idx = remaining.find(LESSON_TAG_END, start_idx + len(LESSON_TAG_START))
+        if end_idx == -1:
+            break
+        remaining = remaining[end_idx + len(LESSON_TAG_END):]
+    return "".join(output).strip()
+
+def parse_lesson_item_payload(payload: str) -> dict | None:
+    try:
+        item = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(item, dict):
+        return None
+    if item.get("type") not in {"vocab", "phrase"}:
+        return None
+    spanish = item.get("spanish")
+    english = item.get("english")
+    if not spanish or not english:
+        return None
+    return {
+        "type": item["type"],
+        "spanish": str(spanish).strip(),
+        "english": str(english).strip()
+    }
+
+class LessonCheckpointStore:
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+        self.user_id: str | None = None
+        self.introduced_items: list[dict] = []
+        self.introduced_keys: set[str] = set()
+        self.last_item: dict | None = None
+
+    def _item_key(self, item: dict) -> str:
+        return f"{item.get('type')}|{item.get('spanish', '').lower().strip()}"
+
+    async def load(self):
+        if not supabase:
+            return
+        try:
+            res = supabase.table("lesson_states").select("introduced_items, last_item, user_id").eq("session_id", self.session_id).execute()
+            if res.data and len(res.data) > 0:
+                row = res.data[0]
+                self.user_id = row.get("user_id")
+                self.introduced_items = row.get("introduced_items") or []
+                self.last_item = row.get("last_item")
+                for item in self.introduced_items:
+                    if isinstance(item, dict):
+                        self.introduced_keys.add(self._item_key(item))
+                return
+        except Exception as e:
+            print(f"[LessonCheckpoint] Failed to load lesson state: {e}")
+
+        try:
+            sess_res = supabase.table("sessions").select("user_id").eq("id", self.session_id).execute()
+            if sess_res.data and len(sess_res.data) > 0:
+                self.user_id = sess_res.data[0].get("user_id")
+        except Exception as e:
+            print(f"[LessonCheckpoint] Failed to fetch user id: {e}")
+
+        if self.user_id:
+            try:
+                supabase.table("lesson_states").insert({
+                    "session_id": self.session_id,
+                    "user_id": self.user_id
+                }).execute()
+            except Exception as e:
+                print(f"[LessonCheckpoint] Failed to create lesson state row: {e}")
+
+    async def record_item(self, item: dict):
+        if not supabase:
+            return
+        key = self._item_key(item)
+        if key not in self.introduced_keys:
+            self.introduced_keys.add(key)
+            self.introduced_items.append(item)
+        self.last_item = item
+        try:
+            supabase.table("lesson_states").update({
+                "introduced_items": self.introduced_items,
+                "last_item": self.last_item
+            }).eq("session_id", self.session_id).execute()
+        except Exception as e:
+            print(f"[LessonCheckpoint] Failed to update lesson state: {e}")
+
+class LessonItemProcessor(FrameProcessor):
+    def __init__(self, session_id: str, checkpoint_store: LessonCheckpointStore):
+        super().__init__()
+        self.session_id = session_id
+        self.checkpoint_store = checkpoint_store
+        self._buffer = ""
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TextFrame):
+            cleaned, items, buffer = self._extract_items(self._buffer + frame.text)
+            self._buffer = buffer
+            for item in items:
+                await self.checkpoint_store.record_item(item)
+            if cleaned:
+                frame.text = cleaned
+                await self.push_frame(frame, direction)
+            return
+
+        await self.push_frame(frame, direction)
+
+    def _extract_items(self, text: str) -> tuple[str, list[dict], str]:
+        items: list[dict] = []
+        output: list[str] = []
+        remaining = text
+
+        while True:
+            start_idx = remaining.find(LESSON_TAG_START)
+            if start_idx == -1:
+                suffix = self._tag_prefix_suffix(remaining)
+                if suffix:
+                    output.append(remaining[:-len(suffix)])
+                    buffer = suffix
+                else:
+                    output.append(remaining)
+                    buffer = ""
+                return "".join(output), items, buffer
+
+            output.append(remaining[:start_idx])
+            end_idx = remaining.find(LESSON_TAG_END, start_idx + len(LESSON_TAG_START))
+            if end_idx == -1:
+                buffer = remaining[start_idx:]
+                return "".join(output), items, buffer
+
+            payload = remaining[start_idx + len(LESSON_TAG_START):end_idx].strip()
+            item = parse_lesson_item_payload(payload)
+            if item:
+                items.append(item)
+            remaining = remaining[end_idx + len(LESSON_TAG_END):]
+
+    def _tag_prefix_suffix(self, text: str) -> str:
+        max_len = min(len(text), len(LESSON_TAG_START) - 1)
+        for length in range(max_len, 0, -1):
+            if LESSON_TAG_START.startswith(text[-length:]):
+                return text[-length:]
+        return ""
+
 class TutorSpeechStreamer(FrameProcessor):
     """
     Frame processor placed between the LLM and TTS to stream tutor text chunks
     in real-time to the client via the LiveKit data channel.
     """
-    def __init__(self, transport):
+    def __init__(self, transport, session_id: str):
         super().__init__()
         self.transport = transport
+        self.session_id = session_id
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, TextFrame):
             try:
+                redis.set(f"agent_speaking:{self.session_id}", "1", ex=30)
+                redis.set(f"agent_speaking_text:{self.session_id}", frame.text, ex=30)
                 payload = json.dumps({"type": "tutor_text_chunk", "text": frame.text})
                 await self.transport.send_message(payload)
             except Exception as e:
@@ -236,6 +412,13 @@ class UserTurnBufferProcessor(FrameProcessor):
 async def run_agent(session_id: str, scenario_system_prompt: str):
     # Load turn history (empty list if new session, last 10 turns if resumed)
     prior_messages = load_prior_context(session_id)
+    checkpoint_store = LessonCheckpointStore(session_id)
+    await checkpoint_store.load()
+
+    try:
+        redis.set(f"agent_pid:{session_id}", str(os.getpid()), ex=3600)
+    except Exception as e:
+        print(f"[Pipeline] Failed to store agent pid: {e}")
 
     # 1. Silero Voice Activity Detector
     vad = SileroVADAnalyzer(
@@ -297,7 +480,8 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     user_turn_processor = UserTurnBufferProcessor(session_id, transport)
     
     # 8b. Tutor Speech Chunk Streamer
-    tutor_speech_streamer = TutorSpeechStreamer(transport)
+    tutor_speech_streamer = TutorSpeechStreamer(transport, session_id)
+    lesson_item_processor = LessonItemProcessor(session_id, checkpoint_store)
 
     # 9. Pipecat Pipeline Assembly
     pipeline = Pipeline([
@@ -306,6 +490,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         user_turn_processor,         # Downstream of stt
         user_aggregator,             # Pre-instantiated user aggregator
         llm,
+        lesson_item_processor,       # Strip metadata + update checkpoint store
         tutor_speech_streamer,       # Stream text chunks in real-time
         tts,
         transport.output(),
@@ -322,7 +507,15 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         print(f"[Pipeline] First participant joined room. ID: {participant_id}")
         
         # Greet the user based on whether this is a new or resumed session
-        if prior_messages:
+        if prior_messages and checkpoint_store.last_item:
+            last_item = checkpoint_store.last_item
+            spanish = last_item.get("spanish") if isinstance(last_item, dict) else None
+            english = last_item.get("english") if isinstance(last_item, dict) else None
+            if spanish and english:
+                greeting = f"Welcome back. Last time we practiced {spanish} — that means {english}. Can you say that again?"
+            else:
+                greeting = "Welcome back. We will continue today's lesson. Are you ready to practice?"
+        elif prior_messages:
             greeting = "Welcome back. We will continue today's lesson. Are you ready to practice?"
         else:
             greeting = "Hi. I will teach you step by step in English, then add Spanish. Ready to start?"
@@ -355,11 +548,14 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
             if interrupted:
                 print(f"[Pipeline] Tutor was interrupted. Skipping database log writing for: {message.content}")
             else:
-                print(f"[Pipeline] Intercepted agent turn: {message.content}")
-                await write_turn(session_id, "agent", message.content)
+                clean_content = strip_lesson_item_tags(message.content)
+                print(f"[Pipeline] Intercepted agent turn: {clean_content}")
+                await write_turn(session_id, "agent", clean_content)
             try:
                 payload = json.dumps({"type": "tutor_text_end"})
                 await transport.send_message(payload)
+                redis.delete(f"agent_speaking:{session_id}")
+                redis.delete(f"agent_speaking_text:{session_id}")
             except Exception as e:
                 print(f"[Pipeline] Error sending tutor_text_end: {e}")
 
@@ -368,6 +564,12 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     
     print(f"[Pipeline] Starting voice loop for room: {session_id}")
     await runner.run(task)
+    try:
+        redis.delete(f"agent_pid:{session_id}")
+        redis.delete(f"agent_speaking:{session_id}")
+        redis.delete(f"agent_speaking_text:{session_id}")
+    except Exception as e:
+        print(f"[Pipeline] Failed to clear agent redis keys: {e}")
 
 def _mint_agent_token(session_id: str) -> str:
     """Mint a LiveKit JWT token for the agent participant."""
