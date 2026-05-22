@@ -18,8 +18,8 @@
       --color-canvas: #0B101E;           /* Main page background */
       --color-surface: #151B2B;          /* Card, panel backgrounds */
       --color-surface-raised: #1C2438;   /* Slightly elevated surfaces (drawer, active panels) */
-      --color-border: #2A3441;           /* Default border */
-      --color-border-subtle: #1F2937;    /* Subtle dividers */
+      --color-border: rgba(255, 255, 255, 0.08);           /* Default border */
+      --color-border-subtle: rgba(255, 255, 255, 0.04);    /* Subtle dividers */
 
       --color-text-primary: #F8FAFC;     /* Main text */
       --color-text-secondary: #94A3B8;   /* Secondary labels, metadata */
@@ -1301,12 +1301,15 @@
         </div>
       </div>
 
+      <!-- SECTION DIVIDER -->
+      <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 4rem 0;" />
+
       <!-- ── PROGRESS & MEMORIES INLINE SECTION ── -->
-      <div id="progress-section" style="margin-top: 3rem;">
+      <div id="progress-section">
         
         <!-- LEARNING PROGRESS TOP CARD -->
-        <div class="glass-card" style="margin-bottom: 2rem;">
-          <div class="progress-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--color-border); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+        <div style="margin-bottom: 2rem;">
+          <div class="progress-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 1rem; margin-bottom: 1.5rem;">
             <h3 style="font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
               Learning Progress
               <button id="btn-refresh-progress" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px; height: auto; border-radius: 4px; border-color: rgba(255,255,255,0.1);">
@@ -1363,12 +1366,12 @@
             </div>
 
             <!-- Progress Overview Banner -->
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border-top: 1px solid var(--color-border); border-radius: 0 0 12px 12px; margin: 0 -2rem -2rem -2rem; padding: 1rem 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); border-top: 1px solid rgba(255,255,255,0.08); border-radius: 12px; margin-top: 2rem; padding: 1.5rem 2rem;">
               <div>
-                <div style="font-size: 13px; font-weight: 600; margin-bottom: 2px;">Progress Overview</div>
-                <div style="font-size: 12px; color: var(--color-text-secondary);">Keep practicing! You're building great habits.</div>
+                <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Progress Overview</div>
+                <div style="font-size: 13px; color: var(--color-text-secondary);">Keep practicing! You're building great habits.</div>
               </div>
-              <button class="btn btn-secondary" style="font-size: 12px; height: 32px; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--color-border);">
+              <button class="btn btn-secondary" style="font-size: 12px; height: 36px; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);">
                 View Detailed Progress &rarr;
               </button>
             </div>
@@ -1376,12 +1379,12 @@
         </div>
 
         <!-- TWO COLUMN SPLIT: LEFT (Vocab + Grammar) | RIGHT (Memories) -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 2rem;">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 2rem; margin-top: 2rem;">
           
           <!-- LEFT COLUMN -->
           <div style="display: flex; flex-direction: column; gap: 2rem;">
             <!-- Vocab Card -->
-            <div class="glass-card" style="padding: 1.5rem;">
+            <div class="glass-card" style="padding: 1.5rem; border: 1px solid rgba(255,255,255,0.08);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
                 <h4 style="font-size: 16px; font-weight: 600;">Vocabulary Learned</h4>
                 <button class="btn btn-secondary" style="font-size: 11px; height: 28px; padding: 0 10px; border-radius: 6px; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.1);">View All</button>
@@ -1392,7 +1395,7 @@
             </div>
 
             <!-- Grammar Card -->
-            <div class="glass-card" style="padding: 1.5rem;">
+            <div class="glass-card" style="padding: 1.5rem; border: 1px solid rgba(255,255,255,0.08);">
               <div style="margin-bottom: 1.25rem;">
                 <h4 style="font-size: 16px; font-weight: 600;">Grammar Focus Areas</h4>
               </div>
@@ -1403,7 +1406,7 @@
           </div>
 
           <!-- RIGHT COLUMN -->
-          <div class="glass-card" style="padding: 1.5rem;">
+          <div class="glass-card" style="padding: 1.5rem; border: 1px solid rgba(255,255,255,0.08);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
               <h4 style="font-size: 16px; font-weight: 600;">Session History & Memories</h4>
               <button class="btn btn-secondary" style="font-size: 11px; height: 28px; padding: 0 10px; border-radius: 6px; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.1);">View All</button>
@@ -1941,7 +1944,7 @@
             </div>
           </div>
           <div class="scenario-title" style="font-size: 18px; margin-bottom: 12px; font-weight: 600;">${escapeHtml(title)}</div>
-          <div class="scenario-description" style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; margin-bottom: 1.5rem;">${desc}</div>
+          <div class="scenario-description" style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; margin-bottom: 1.5rem; flex-grow: 1;">${desc}</div>
           <div style="margin-top: auto; padding: 6px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; font-size: 12px; color: var(--color-text-secondary); width: fit-content; border: 1px solid rgba(255,255,255,0.05);">
             Vocabulary: ${vocabString}
           </div>
