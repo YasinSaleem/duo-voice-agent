@@ -21,6 +21,7 @@ from pipecat.transports.livekit.transport import LiveKitTransport, LiveKitParams
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.groq.llm import GroqLLMService
+from pipecat.services.tts_service import TextAggregationMode
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -29,7 +30,15 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineTask, PipelineParams
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
-from pipecat.frames.frames import Frame, TranscriptionFrame, TTSSpeakFrame, EndFrame, TextFrame
+from pipecat.frames.frames import (
+    Frame,
+    LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
+    TranscriptionFrame,
+    TTSSpeakFrame,
+    EndFrame,
+    TextFrame,
+)
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from upstash_redis import Redis
@@ -68,7 +77,8 @@ This global policy is higher priority than scenario instructions. Scenario promp
 Core behavior:
 - Teach like a structured language teacher, not a roleplay character.
 - Use English as the primary instructional language at the start and add Spanish gradually after mastery.
-- Keep replies short and easy to process in audio: usually 1-2 short sentences, occasionally 3 if needed.
+- Voice-first brevity is mandatory: default to ONE short sentence (under ~20 words). Use TWO short sentences only when necessary. Never use three or more sentences in one turn.
+- Do not preamble, recap at length, or stack multiple teaching points in a single reply.
 - Ask at most one question at a time.
 - Follow the scenario lesson plan exactly: teach vocab and phrases in the given order and do not add new targets.
 - For each target: explain in English, give the Spanish, then ask the learner to repeat or use it.
@@ -87,7 +97,7 @@ Lesson checkpointing (structured, no guessing):
 - Never speak or explain the tag; it will be removed before audio output.
 
 Resume recap behavior:
-- If a lesson checkpoint exists (introduced_items/last_item), begin by briefly recalling the last_item and asking the learner to repeat or explain it.
+- If a lesson checkpoint exists (introduced_items/last_item), use ONE short sentence to recall last_item, then ask the learner to repeat it. Do not add extra explanation in that same turn.
 - Then continue with the next lesson item.
 
 Correction style:
@@ -129,6 +139,62 @@ def enqueue_grammar_job(session_id: str, turn_id: str):
 
 def normalize_transcript_spacing(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+CLAUSE_BOUNDARY_CHARS = frozenset(",.!?;:")
+
+
+def drain_clause_boundary_phrases(buffer: str) -> tuple[list[str], str]:
+    """Extract speakable phrases ending at comma, period, etc. Returns (phrases, remainder)."""
+    phrases: list[str] = []
+    i = 0
+    n = len(buffer)
+
+    while i < n:
+        cut = None
+        for j in range(i, n):
+            ch = buffer[j]
+            if ch not in CLAUSE_BOUNDARY_CHARS:
+                continue
+
+            if j == n - 1:
+                if ch in ".!?":
+                    cut = j + 1
+                break
+
+            nxt = buffer[j + 1]
+            if ch == ",":
+                if nxt.isdigit():
+                    continue
+                if nxt.isspace() or nxt in "\"')]}":
+                    cut = j + 1
+                    break
+            elif nxt.isspace() or nxt in "\"')]}":
+                cut = j + 1
+                break
+
+        if cut is None:
+            break
+
+        phrase = buffer[i:cut]
+        if phrase.strip():
+            phrases.append(phrase)
+        i = cut
+        while i < n and buffer[i].isspace():
+            i += 1
+
+    return phrases, buffer[i:]
+
+
+def split_tts_phrases(text: str) -> list[str]:
+    """Split full lines into clause-sized TTS phrases (commas, stops, etc.)."""
+    normalized = normalize_transcript_spacing(text)
+    if not normalized:
+        return []
+    phrases, remainder = drain_clause_boundary_phrases(normalized)
+    if remainder.strip():
+        phrases.append(remainder.strip())
+    return phrases
+
 
 def utterance_flush_delay(text: str) -> float:
     normalized = normalize_transcript_spacing(text)
@@ -296,6 +362,42 @@ class LessonItemProcessor(FrameProcessor):
                 return text[-length:]
         return ""
 
+class ClauseBoundaryTextChunker(FrameProcessor):
+    """
+    Buffer streaming LLM text and forward phrase-sized TextFrames at punctuation
+    boundaries (comma, period, question mark, etc.) so TTS/audio can start early
+    without synthesizing every token separately.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._buffer = ""
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, LLMFullResponseStartFrame):
+            self._buffer = ""
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, TextFrame):
+            self._buffer += frame.text
+            phrases, self._buffer = drain_clause_boundary_phrases(self._buffer)
+            for phrase in phrases:
+                await self.push_frame(TextFrame(phrase), direction)
+            return
+
+        if isinstance(frame, LLMFullResponseEndFrame):
+            if self._buffer.strip():
+                await self.push_frame(TextFrame(self._buffer), direction)
+            self._buffer = ""
+            await self.push_frame(frame, direction)
+            return
+
+        await self.push_frame(frame, direction)
+
+
 class TutorSpeechStreamer(FrameProcessor):
     """
     Frame processor placed between the LLM and TTS to stream tutor text chunks
@@ -455,15 +557,20 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     )
 
     # 4. Groq LLM Service (Spanish language tutor model)
+    llm_max_tokens = int(os.environ.get("GROQ_MAX_COMPLETION_TOKENS", "120"))
     llm = GroqLLMService(
         api_key=os.environ["GROQ_API_KEY"],
-        settings=GroqLLMService.Settings(model="llama-3.1-8b-instant")
+        settings=GroqLLMService.Settings(
+            model="llama-3.1-8b-instant",
+            max_completion_tokens=llm_max_tokens,
+        ),
     )
 
-    # 5. Deepgram TTS Service (natural Spanish speaker voice)
+    # 5. Deepgram TTS — TOKEN mode; clause chunker upstream sends phrase-sized TextFrames
     tts = DeepgramTTSService(
         api_key=os.environ["DEEPGRAM_API_KEY"],
-        settings=DeepgramTTSService.Settings(voice="aura-2-sirio-es")
+        text_aggregation_mode=TextAggregationMode.TOKEN,
+        settings=DeepgramTTSService.Settings(voice="aura-2-sirio-es"),
     )
 
 
@@ -481,7 +588,8 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     # 8. Custom User Turn Interceptor
     user_turn_processor = UserTurnBufferProcessor(session_id, transport)
     
-    # 8b. Tutor Speech Chunk Streamer
+    # 8b. Clause chunker + tutor text streamer for UI captions
+    clause_chunker = ClauseBoundaryTextChunker()
     tutor_speech_streamer = TutorSpeechStreamer(transport, session_id)
     lesson_item_processor = LessonItemProcessor(session_id, checkpoint_store)
 
@@ -493,6 +601,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         user_aggregator,             # Pre-instantiated user aggregator
         llm,
         lesson_item_processor,       # Strip metadata + update checkpoint store
+        clause_chunker,              # Flush TTS-sized phrases at punctuation boundaries
         tutor_speech_streamer,       # Stream text chunks in real-time
         tts,
         transport.output(),
@@ -514,13 +623,13 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
             spanish = last_item.get("spanish") if isinstance(last_item, dict) else None
             english = last_item.get("english") if isinstance(last_item, dict) else None
             if spanish and english:
-                greeting = f"Welcome back. Last time we practiced {spanish} — that means {english}. Can you say that again?"
+                greeting = f"Welcome back. Repeat {spanish} — that means {english}."
             else:
-                greeting = "Welcome back. We will continue today's lesson. Are you ready to practice?"
+                greeting = "Welcome back. Ready to continue?"
         elif prior_messages:
-            greeting = "Welcome back. We will continue today's lesson. Are you ready to practice?"
+            greeting = "Welcome back. Ready to continue?"
         else:
-            greeting = "Hi. I will teach you step by step in English, then add Spanish. Ready to start?"
+            greeting = "Hi. We'll learn Spanish step by step. Ready?"
             
         print(f"[Pipeline] Enqueueing greeting turn: '{greeting}'")
         # Save greeting turn manually to MongoDB since it bypasses the LLM generator
@@ -535,7 +644,8 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         except Exception as e:
             print(f"[Pipeline] Error sending greeting text: {e}")
         
-        await task.queue_frame(TTSSpeakFrame(greeting))
+        for phrase in split_tts_phrases(greeting):
+            await task.queue_frame(TTSSpeakFrame(phrase))
 
     @transport.event_handler("on_participant_disconnected")
     async def on_participant_disconnected(transport, participant_id):
