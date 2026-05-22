@@ -86,6 +86,20 @@
       font-size: 14px;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      position: relative;
+      isolation: isolate;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(circle at 18% 22%, rgba(63, 185, 80, 0.10), transparent 22%),
+        radial-gradient(circle at 82% 18%, rgba(88, 166, 255, 0.10), transparent 20%),
+        radial-gradient(circle at 74% 82%, rgba(210, 153, 34, 0.07), transparent 18%);
+      z-index: -2;
+      pointer-events: none;
     }
 
     h1, h2, h3, h4, h5, h6 {
@@ -98,6 +112,76 @@
       max-width: 1024px;
       margin: 0 auto;
       padding: var(--space-12) var(--space-6);
+      position: relative;
+      z-index: 1;
+    }
+
+    .page-decor {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: -1;
+    }
+
+    .page-decor img {
+      position: absolute;
+      opacity: 0.16;
+      filter: invert(1) brightness(1.2) contrast(0.85) drop-shadow(0 0 26px rgba(88, 166, 255, 0.10));
+    }
+
+    .page-decor .owl-left {
+      width: 280px;
+      left: 24px;
+      top: 140px;
+      transform: rotate(-10deg);
+    }
+
+    .page-decor .owl-right {
+      width: 320px;
+      right: 18px;
+      top: 110px;
+      opacity: 0.18;
+      filter: invert(0.82) sepia(0.18) saturate(2.2) hue-rotate(175deg) brightness(1.15) contrast(0.9) drop-shadow(0 0 26px rgba(88, 166, 255, 0.14));
+      transform: rotate(9deg);
+    }
+
+    .page-decor .owl-bottom {
+      width: 240px;
+      left: 56px;
+      bottom: 40px;
+      opacity: 0.15;
+      filter: invert(0.82) sepia(0.24) saturate(3) hue-rotate(45deg) brightness(1.05) contrast(0.9) drop-shadow(0 0 24px rgba(63, 185, 80, 0.12));
+      transform: rotate(6deg);
+    }
+
+    .page-decor .constellation {
+      position: absolute;
+      border: 1px solid rgba(139, 148, 158, 0.18);
+      border-radius: 9999px;
+      box-shadow: 0 0 30px rgba(88, 166, 255, 0.06);
+    }
+
+    .page-decor .constellation.one {
+      width: 180px;
+      height: 180px;
+      right: 110px;
+      bottom: 110px;
+    }
+
+    .page-decor .constellation.two {
+      width: 72px;
+      height: 72px;
+      left: 220px;
+      top: 520px;
+    }
+
+    .page-decor .constellation.three {
+      width: 22px;
+      height: 22px;
+      right: 280px;
+      top: 360px;
+      background: rgba(210, 153, 34, 0.12);
     }
 
     /* ── HEADER (Lobby & Setup) ── */
@@ -180,6 +264,36 @@
     @keyframes statusPulse {
       0%, 100% { opacity: 0.6; }
       50% { opacity: 1; }
+    }
+
+    @media (max-width: 1280px) {
+      .page-decor .owl-left {
+        width: 220px;
+        left: -24px;
+      }
+
+      .page-decor .owl-right {
+        width: 250px;
+        right: -26px;
+      }
+    }
+
+    @media (max-width: 980px) {
+      .page-decor {
+        opacity: 0.45;
+      }
+
+      .page-decor .owl-left,
+      .page-decor .owl-right,
+      .page-decor .owl-bottom {
+        width: 170px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .page-decor {
+        display: none;
+      }
     }
 
     /* ── CARD STYLES ── */
@@ -1105,9 +1219,18 @@
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
-  </style>
+</style>
 </head>
 <body>
+  <div class="page-decor" aria-hidden="true">
+    <img class="owl-left" src="/assets/duo-mascot.svg" alt="">
+    <img class="owl-right" src="/assets/duo-mascot.svg" alt="">
+    <img class="owl-bottom" src="/assets/duo-mascot.svg" alt="">
+
+    <div class="constellation one"></div>
+    <div class="constellation two"></div>
+    <div class="constellation three"></div>
+  </div>
 
   <!-- ── AUTHENTICATION COVER ── -->
   <div id="auth-screen" class="auth-screen">
