@@ -22,6 +22,34 @@ router.get('/config', (_req, res) => {
 });
 
 /**
+ * Route: POST /v1/auth/signup
+ * Purpose: Register and auto-confirm a user (ideal for demo/local sandbox development).
+ */
+router.post('/signup', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: { message: 'Email and password are required.' } });
+    }
+
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true
+    });
+
+    if (error) {
+      console.error('[Auth] Error creating user:', error);
+      return res.status(400).json({ error: { message: error.message } });
+    }
+
+    return res.status(200).json({ ok: true, user: data.user });
+  } catch (err: any) {
+    return res.status(500).json({ error: { message: err.message } });
+  }
+});
+
+/**
  * Route: GET /v1/auth/memories
  * Purpose: Fetch the authenticated user's memory timeline (RLS-enforced).
  */

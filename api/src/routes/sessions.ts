@@ -98,6 +98,14 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     // 3. Mint WebRTC token
     const token = await createLiveKitToken(session.id, authReq.user.id);
 
+    // 4. Spawn the Python tutor agent process in the background immediately
+    try {
+      console.log(`[Sessions Route] Starting session: spawning agent for session ${session.id}...`);
+      await spawnAgent(session.id);
+    } catch (err) {
+      console.error(`[Sessions Route] Error spawning agent during start:`, err);
+    }
+
     return res.status(201).json({
       session_id: session.id,
       livekit_url: process.env.LIVEKIT_URL,

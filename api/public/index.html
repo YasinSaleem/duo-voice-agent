@@ -4,11 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DuoVoice Tutor — Interactive Voice Playground</title>
-  
-  <!-- Premium Modern Typography -->
+  <!-- Premium Modern Typography (Plus Jakarta Sans & Inter) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Supabase JS Client & LiveKit Client via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -16,36 +15,59 @@
 
   <style>
     :root {
-      --bg-darker: #090B11;
-      --bg-dark: #0F121D;
-      --bg-card: rgba(22, 28, 45, 0.4);
-      --bg-glass: rgba(15, 18, 29, 0.6);
-      --border-color: rgba(255, 255, 255, 0.08);
-      --border-glow: rgba(99, 102, 241, 0.15);
-      
-      --primary: #6366f1;
-      --primary-hover: #4f46e5;
-      --primary-glow: rgba(99, 102, 241, 0.4);
-      
-      --secondary: #a855f7;
-      --secondary-glow: rgba(168, 85, 247, 0.4);
-      
-      --success: #10b981;
-      --success-bg: rgba(16, 185, 129, 0.1);
-      
-      --danger: #ef4444;
-      --danger-bg: rgba(239, 68, 68, 0.1);
-      
-      --warning: #f59e0b;
-      --warning-bg: rgba(245, 158, 11, 0.1);
-      
-      --text-main: #f3f4f6;
-      --text-muted: #9ca3af;
-      --text-inverse: #ffffff;
-      
-      --font-display: 'Outfit', sans-serif;
-      --font-body: 'Plus Jakarta Sans', sans-serif;
-      --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      --color-canvas: #0D1117;           /* Main page background */
+      --color-surface: #161B22;          /* Card, panel backgrounds */
+      --color-surface-raised: #1C2128;   /* Slightly elevated surfaces (drawer, active panels) */
+      --color-border: #30363D;           /* Default border */
+      --color-border-subtle: #21262D;    /* Subtle dividers */
+
+      --color-text-primary: #E6EDF3;     /* Main text */
+      --color-text-secondary: #8B949E;   /* Secondary labels, metadata */
+      --color-text-disabled: #484F58;    /* Disabled text */
+
+      --color-primary: #58A6FF;          /* Primary brand accent (blue) */
+      --color-primary-subtle: rgba(88, 166, 255, 0.12); /* Tinted backgrounds */
+      --color-primary-border: rgba(88, 166, 255, 0.4);  /* Selected card border */
+
+      --color-success: #3FB950;          /* Proficient badge, correction text */
+      --color-success-subtle: rgba(63, 185, 80, 0.12);
+
+      --color-warning: #D29922;          /* Grammar tip button, Needs Work badge */
+      --color-warning-subtle: rgba(210, 153, 34, 0.12);
+      --color-warning-border: rgba(210, 153, 34, 0.3);
+
+      --color-error: #F85149;            /* Destructive buttons, muted state, error text */
+      --color-error-subtle: rgba(248, 81, 73, 0.12);
+
+      --color-tutor-bubble: #1C2128;     /* Tutor message background */
+      --color-user-bubble: rgba(88, 166, 255, 0.15); /* User message background */
+
+      --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+
+      /* Spacing Scale (Base unit 4px) */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-10: 40px;
+      --space-12: 48px;
+      --space-16: 64px;
+
+      /* Border Radii */
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+      --radius-xl: 12px;
+      --radius-full: 9999px;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6);
+      --shadow-focus: 0 0 0 3px rgba(88, 166, 255, 0.3);
     }
 
     * {
@@ -55,526 +77,627 @@
     }
 
     body {
-      background-color: var(--bg-darker);
-      background-image: 
-        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.12) 0px, transparent 50%);
-      color: var(--text-main);
+      background-color: var(--color-canvas);
+      color: var(--color-text-primary);
       font-family: var(--font-body);
       min-height: 100vh;
       overflow-x: hidden;
       line-height: 1.5;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     h1, h2, h3, h4, h5, h6 {
       font-family: var(--font-display);
       font-weight: 600;
-      letter-spacing: -0.02em;
+      color: var(--color-text-primary);
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1024px;
       margin: 0 auto;
-      padding: 2rem 1.5rem;
+      padding: var(--space-12) var(--space-6);
     }
 
-    /* ── HEADER ── */
+    /* ── HEADER (Lobby & Setup) ── */
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 3rem;
-      padding-bottom: 1.5rem;
-      border-bottom: 1px solid var(--border-color);
+      height: 56px;
+      padding: 0 var(--space-6);
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      transition: opacity 150ms ease;
+    }
+
+    header.hidden {
+      display: none !important;
     }
 
     .logo-container {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: var(--space-2);
     }
 
     .logo-icon {
-      width: 42px;
-      height: 42px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      border-radius: 12px;
+      width: 28px;
+      height: 28px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: var(--font-display);
-      font-weight: 800;
-      font-size: 1.25rem;
-      color: var(--text-inverse);
-      box-shadow: 0 8px 24px var(--primary-glow);
+      user-select: none;
     }
 
     .logo-text {
-      font-size: 1.5rem;
-      font-weight: 700;
-      background: linear-gradient(135deg, #ffffff, #d1d5db);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      letter-spacing: -0.01em;
     }
 
     .logo-text span {
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: var(--color-primary);
     }
 
     .status-badge {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border-color);
-      padding: 0.5rem 1rem;
-      border-radius: 99px;
-      font-size: 0.85rem;
+      background-color: var(--color-surface-raised);
+      border: 1px solid var(--color-border);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 500;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      color: var(--text-muted);
+      gap: var(--space-2);
+      color: var(--color-text-secondary);
     }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: var(--danger);
-      box-shadow: 0 0 12px var(--danger);
+      width: 6px;
+      height: 6px;
+      border-radius: var(--radius-full);
+      background-color: var(--color-error);
     }
 
     .status-dot.active {
-      background-color: var(--success);
-      box-shadow: 0 0 12px var(--success);
+      background-color: var(--color-success);
+      box-shadow: 0 0 6px var(--color-success);
+      animation: statusPulse 2s infinite ease-in-out;
     }
 
     .status-dot.warning {
-      background-color: var(--warning);
-      box-shadow: 0 0 12px var(--warning);
+      background-color: var(--color-warning);
+      box-shadow: 0 0 6px var(--color-warning);
+    }
+
+    @keyframes statusPulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
     }
 
     /* ── CARD STYLES ── */
     .glass-card {
-      background: var(--bg-card);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--border-color);
-      border-radius: 24px;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
-      padding: 2.5rem;
-      margin-bottom: 2rem;
-      transition: var(--transition-smooth);
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      transition: border-color 150ms ease, box-shadow 150ms ease;
     }
 
     .glass-card:hover {
-      border-color: rgba(99, 102, 241, 0.2);
-      box-shadow: 0 20px 48px rgba(99, 102, 241, 0.05);
+      border-color: var(--color-text-secondary);
     }
 
     /* ── AUTHENTICATION PANEL ── */
     .panel-title {
-      font-size: 1.75rem;
-      margin-bottom: 0.5rem;
-      color: var(--text-inverse);
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: var(--space-2);
+      color: var(--color-text-primary);
     }
 
     .panel-subtitle {
-      color: var(--text-muted);
-      margin-bottom: 2rem;
-      font-size: 0.95rem;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-8);
+      font-size: 13px;
+      line-height: 1.5;
     }
 
     .form-group {
-      margin-bottom: 1.5rem;
-    }
-
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-    }
-
-    @media (max-width: 768px) {
-      .form-row {
-        grid-template-columns: 1fr;
-      }
+      margin-bottom: var(--space-5);
     }
 
     label {
       display: block;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-2);
     }
 
     input, textarea, select {
       width: 100%;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 0.85rem 1rem;
-      color: var(--text-main);
+      background-color: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 0 var(--space-4);
+      height: 38px;
+      color: var(--color-text-primary);
       font-family: inherit;
-      font-size: 0.95rem;
-      transition: var(--transition-smooth);
+      font-size: 14px;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
     }
 
     input:focus, textarea:focus, select:focus {
       outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 12px var(--primary-glow);
-      background: rgba(0, 0, 0, 0.5);
+      border-color: var(--color-primary);
+      box-shadow: var(--shadow-focus);
+    }
+
+    input::placeholder {
+      color: var(--color-text-disabled);
     }
 
     .button-group {
       display: flex;
-      gap: 1rem;
-      margin-top: 1.5rem;
+      gap: var(--space-3);
+      margin-top: var(--space-6);
     }
 
+    /* ── BUTTON STYLES ── */
     .btn {
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
-      padding: 0.85rem 1.75rem;
+      gap: var(--space-2);
+      padding: 0 var(--space-5);
+      height: 38px;
       font-family: var(--font-display);
-      font-size: 0.95rem;
-      font-weight: 600;
-      border-radius: 12px;
-      border: none;
-      transition: var(--transition-smooth);
-      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: var(--radius-md);
+      border: 1px solid transparent;
+      transition: background-color 120ms ease, border-color 120ms ease, transform 60ms ease, opacity 120ms ease;
+      user-select: none;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      pointer-events: none !important;
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      color: var(--text-inverse);
-      box-shadow: 0 4px 16px var(--primary-glow);
+      background-color: var(--color-primary);
+      color: #000000;
+      border-color: var(--color-primary);
+      font-weight: 600;
     }
 
     .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 24px var(--primary-glow);
-      opacity: 0.95;
+      background-color: #79b8ff;
+      border-color: #79b8ff;
     }
 
     .btn-secondary {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-color);
-      color: var(--text-main);
+      background-color: transparent;
+      border-color: var(--color-border);
+      color: var(--color-text-primary);
     }
 
     .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: var(--text-muted);
+      background-color: var(--color-surface-raised);
+      border-color: var(--color-text-secondary);
     }
 
     .btn-danger {
-      background: var(--danger);
-      color: var(--text-inverse);
-      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+      background-color: var(--color-error);
+      color: var(--color-text-primary);
+      border-color: var(--color-error);
+      font-weight: 600;
     }
 
     .btn-danger:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 24px rgba(239, 68, 68, 0.4);
+      background-color: #ff6e67;
+      border-color: #ff6e67;
     }
 
     /* ── SCENARIO GRID ── */
     .scenario-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 1.5rem;
-      margin-top: 1.5rem;
-      margin-bottom: 2rem;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-4);
+      margin-top: var(--space-6);
+      margin-bottom: var(--space-8);
+    }
+
+    @media (max-width: 1024px) {
+      .scenario-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .scenario-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     .scenario-card {
-      background: rgba(0, 0, 0, 0.25);
-      border: 1px solid var(--border-color);
-      border-radius: 16px;
-      padding: 1.5rem;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
       cursor: pointer;
-      transition: var(--transition-smooth);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .scenario-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 4px;
+      transition: border-color 150ms ease, background-color 150ms ease;
+      display: flex;
+      flex-direction: column;
       height: 100%;
-      background: transparent;
-      transition: var(--transition-smooth);
+      min-height: 150px;
     }
 
     .scenario-card:hover {
-      transform: translateY(-4px);
-      border-color: rgba(99, 102, 241, 0.3);
-      background: rgba(99, 102, 241, 0.03);
+      border-color: var(--color-text-secondary);
+      background-color: var(--color-surface-raised);
     }
 
     .scenario-card.selected {
-      border-color: var(--primary);
-      background: rgba(99, 102, 241, 0.05);
-      box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1);
+      border-color: var(--color-primary);
+      background-color: var(--color-primary-subtle);
     }
 
-    .scenario-card.selected::before {
-      background: linear-gradient(to bottom, var(--primary), var(--secondary));
+    .scenario-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-3);
+    }
+
+    .scenario-card-locale {
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      font-weight: 500;
     }
 
     .scenario-title {
-      font-size: 1.15rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-      color: var(--text-inverse);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      margin-bottom: var(--space-2);
     }
 
     .scenario-description {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      line-height: 1.4;
-      margin-bottom: 1.25rem;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      flex: 1;
     }
 
     .scenario-badge {
       display: inline-flex;
-      font-size: 0.75rem;
-      font-weight: 700;
-      padding: 0.25rem 0.65rem;
-      border-radius: 99px;
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-muted);
-      border: 1px solid var(--border-color);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
     }
 
     .scenario-badge.level-1 {
-      color: var(--success);
-      background-color: var(--success-bg);
-      border-color: rgba(16, 185, 129, 0.2);
+      color: var(--color-success);
+      border-color: var(--color-success);
+      background-color: var(--color-success-subtle);
     }
 
     .scenario-badge.level-2 {
-      color: var(--warning);
-      background-color: var(--warning-bg);
-      border-color: rgba(245, 158, 11, 0.2);
+      color: var(--color-warning);
+      border-color: var(--color-warning);
+      background-color: var(--color-warning-subtle);
     }
 
     .scenario-badge.level-3 {
-      color: var(--danger);
-      background-color: var(--danger-bg);
-      border-color: rgba(239, 68, 68, 0.2);
+      color: var(--color-error);
+      border-color: var(--color-error);
+      background-color: var(--color-error-subtle);
     }
 
-    /* ── ACTIVE PLAYGROUND INTERFACE ── */
+    /* ── ACTIVE PLAYGROUND SPLIT-COLUMN ── */
+    #step-playground {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: var(--color-canvas);
+      padding: var(--space-6);
+      box-sizing: border-box;
+      z-index: 500;
+    }
+
+    #step-playground.hidden {
+      display: none !important;
+    }
+
     .playground-grid {
       display: grid;
-      grid-template-columns: 4fr 5fr;
-      gap: 2rem;
+      grid-template-columns: 45fr 55fr;
+      gap: var(--space-6);
+      height: 100%;
+      overflow: hidden;
     }
 
     @media (max-width: 1024px) {
       .playground-grid {
         grid-template-columns: 1fr;
+        grid-template-rows: 380px 1fr;
+        overflow-y: auto;
       }
     }
 
-    /* ── LEFT PANE: CALL CONTROLS ── */
+    /* ── LEFT PANE: CALL CHAMBER ── */
     .call-chamber {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 3rem 2rem;
+      padding: var(--space-8) var(--space-6);
       text-align: center;
       position: relative;
+      height: 100%;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-sizing: border-box;
     }
 
     .visualizer-outer {
-      width: 200px;
-      height: 200px;
-      border-radius: 50%;
+      width: 160px;
+      height: 160px;
+      border-radius: var(--radius-full);
       display: flex;
       align-items: center;
       justify-content: center;
       position: relative;
-      margin-bottom: 2.5rem;
+      margin-bottom: var(--space-8);
     }
 
     .pulse-ring {
       position: absolute;
       width: 100%;
       height: 100%;
-      border-radius: 50%;
-      border: 2px solid var(--primary);
+      border-radius: var(--radius-full);
+      border: 1px solid var(--color-primary);
       opacity: 0;
-      transition: var(--transition-smooth);
+      transform: scale(0.9);
+      transition: opacity 200ms ease;
     }
 
     .pulse-ring.active {
-      animation: pulseGlow 2s infinite ease-out;
+      animation: pulseGlow 2.5s infinite cubic-bezier(0.25, 0, 0, 1);
     }
 
     .pulse-ring.active:nth-child(2) {
-      animation-delay: 0.6s;
+      animation-delay: 0.8s;
     }
 
     .pulse-ring.active:nth-child(3) {
-      animation-delay: 1.2s;
+      animation-delay: 1.6s;
     }
 
     .visualizer-core {
-      width: 130px;
-      height: 130px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      width: 110px;
+      height: 110px;
+      border-radius: var(--radius-full);
+      background-color: var(--color-primary);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 2.5rem;
-      color: var(--text-inverse);
-      box-shadow: 0 12px 36px var(--primary-glow);
+      font-size: 32px;
+      color: #000000;
+      box-shadow: var(--shadow-sm);
       z-index: 2;
-      transition: var(--transition-smooth);
+      transition: background-color 200ms ease, color 200ms ease;
     }
 
     .visualizer-core.muted {
-      background: #374151;
-      box-shadow: none;
+      background-color: var(--color-error) !important;
+      color: #ffffff !important;
     }
 
     @keyframes pulseGlow {
       0% {
-        transform: scale(0.85);
-        opacity: 0.8;
+        transform: scale(0.9);
+        opacity: 0.4;
       }
       100% {
-        transform: scale(1.6);
+        transform: scale(1.5);
         opacity: 0;
       }
     }
 
+    .call-scenario-tag {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      margin-bottom: var(--space-2);
+    }
+
     .call-meta-title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-      color: var(--text-inverse);
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: var(--space-2);
+      color: var(--color-text-primary);
     }
 
     .call-meta-status {
-      font-size: 0.95rem;
-      color: var(--text-muted);
-      margin-bottom: 2rem;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-6);
     }
 
+    /* Subtitles Card Overlay (fades and maps text word-by-word) */
     .live-caption-box {
-      width: 100%;
-      max-width: 320px;
-      margin: 0 auto 2rem auto;
-      padding: 1rem 1.25rem;
-      background: var(--bg-glass);
-      border: 1px solid var(--border-color);
-      border-radius: 16px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      width: 280px;
+      padding: var(--space-4);
+      background-color: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
       text-align: left;
       min-height: 80px;
-      max-height: 140px;
+      max-height: 120px;
       overflow-y: auto;
-      transition: var(--transition-smooth);
-      position: relative;
+      margin-bottom: var(--space-6);
+      opacity: 1;
+      transition: opacity 200ms ease;
     }
     
     .live-caption-box.hidden {
+      opacity: 0 !important;
+      pointer-events: none;
       display: none !important;
     }
 
     .live-caption-label {
-      font-size: 0.65rem;
-      font-weight: 800;
-      letter-spacing: 0.075em;
-      color: var(--secondary);
-      margin-bottom: 0.5rem;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--color-primary);
+      margin-bottom: var(--space-2);
       text-transform: uppercase;
     }
 
     #live-caption-text {
-      font-size: 0.95rem;
-      line-height: 1.45;
-      color: var(--text-inverse);
-      font-weight: 500;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--color-text-primary);
+      font-weight: 400;
     }
 
     .controller-pad {
       display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
+      gap: var(--space-3);
       justify-content: center;
+      width: 100%;
     }
 
-    /* ── RIGHT PANE: CHAT TIMELINE ── */
+    /* Mute Mic Square outlined 40px with inline label hidden in CSS */
+    #btn-toggle-mic {
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      text-indent: -9999px;
+      background-color: transparent;
+      border-color: var(--color-border);
+      color: var(--color-text-primary);
+    }
+
+    #btn-toggle-mic:hover {
+      background-color: var(--color-surface-raised);
+      border-color: var(--color-text-secondary);
+    }
+
+    #btn-toggle-mic.btn-primary {
+      background-color: var(--color-primary);
+      border-color: var(--color-primary);
+    }
+    
+    #btn-toggle-mic.btn-primary:hover {
+      background-color: #79b8ff;
+      border-color: #79b8ff;
+    }
+
+    #btn-toggle-mic span {
+      text-indent: 0;
+      float: left;
+      font-size: 16px;
+    }
+
+    /* ── RIGHT PANE: TIMELINE & LOGS ── */
     .timeline-card {
       display: flex;
       flex-direction: column;
-      height: 600px;
-      padding: 1.5rem;
+      height: 100%;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-sizing: border-box;
+      overflow: hidden;
     }
 
     .timeline-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid var(--border-color);
-      margin-bottom: 1rem;
+      height: 48px;
+      padding: 0 var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-surface-raised);
     }
 
     .timeline-title {
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: var(--text-inverse);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    #logs-sync-status {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      font-weight: 500;
     }
 
     .scroll-timeline {
       flex: 1;
       overflow-y: auto;
-      padding: 0.5rem;
+      padding: var(--space-5);
       display: flex;
       flex-direction: column;
-      gap: 1.25rem;
+      gap: var(--space-5);
       scroll-behavior: smooth;
     }
 
-    /* Scrollbar Styling */
+    /* Custom thin scrollbars */
     .scroll-timeline::-webkit-scrollbar {
-      width: 6px;
+      width: 4px;
     }
     .scroll-timeline::-webkit-scrollbar-track {
       background: transparent;
     }
     .scroll-timeline::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 99px;
+      background: var(--color-border);
+      border-radius: var(--radius-full);
     }
 
     .bubble-wrapper {
       display: flex;
       flex-direction: column;
-      max-width: 80%;
+      max-width: 75%;
     }
 
     .bubble-wrapper.user {
@@ -586,75 +709,78 @@
     }
 
     .bubble-sender {
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      margin-bottom: 0.25rem;
-      margin-left: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-1);
+      margin-left: var(--space-2);
     }
 
     .bubble-wrapper.user .bubble-sender {
       text-align: right;
-      margin-right: 0.5rem;
+      margin-right: var(--space-2);
       margin-left: 0;
     }
 
     .chat-bubble {
-      padding: 0.85rem 1.25rem;
-      border-radius: 18px;
-      font-size: 0.95rem;
-      line-height: 1.4;
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-lg);
+      font-size: 13px;
+      line-height: 1.5;
       position: relative;
     }
 
     .bubble-wrapper.user .chat-bubble {
-      background: var(--primary);
-      color: var(--text-inverse);
-      border-bottom-right-radius: 4px;
-      box-shadow: 0 4px 12px var(--primary-glow);
+      background-color: var(--color-user-bubble);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-primary-border);
+      border-top-right-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
     }
 
     .bubble-wrapper.agent .chat-bubble {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-color);
-      color: var(--text-main);
-      border-bottom-left-radius: 4px;
+      background-color: var(--color-tutor-bubble);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border);
+      border-top-left-radius: var(--radius-sm);
     }
 
-    /* ── GRAMMAR CORRECTION BOX ── */
+    /* ── GRAMMAR CORRECTION DRAWER ── */
     .correction-badge {
       display: inline-flex;
       align-items: center;
-      gap: 0.35rem;
-      background: var(--warning-bg);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-      color: var(--warning);
-      font-size: 0.75rem;
-      font-weight: 700;
-      padding: 0.2rem 0.5rem;
-      border-radius: 6px;
-      margin-top: 0.5rem;
+      gap: var(--space-1);
+      background-color: var(--color-warning-subtle);
+      border: 1px solid var(--color-warning-border);
+      color: var(--color-warning);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      margin-top: var(--space-2);
       cursor: pointer;
       user-select: none;
-      transition: var(--transition-smooth);
+      transition: background-color 120ms ease;
     }
 
     .correction-badge:hover {
-      background: rgba(245, 158, 11, 0.2);
+      background-color: rgba(210, 153, 34, 0.25);
     }
 
     .correction-drawer {
-      margin-top: 0.5rem;
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid var(--border-color);
-      border-left: 3px solid var(--warning);
-      border-radius: 8px;
-      padding: 0.85rem 1rem;
-      font-size: 0.85rem;
+      margin-top: var(--space-3);
+      background-color: var(--color-surface-raised);
+      border: 1px solid var(--color-border);
+      border-left: 3px solid var(--color-warning);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+      font-size: 12px;
+      width: 100%;
+      text-align: left;
       display: none;
-      animation: slideDown 0.25s ease-out forwards;
+      animation: slideDown 200ms ease-out forwards;
     }
 
     @keyframes slideDown {
@@ -663,7 +789,7 @@
     }
 
     .correction-field {
-      margin-bottom: 0.4rem;
+      margin-bottom: var(--space-2);
     }
 
     .correction-field:last-child {
@@ -671,25 +797,27 @@
     }
 
     .field-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
       text-transform: uppercase;
+      margin-bottom: 2px;
+      display: block;
     }
 
     .field-val.wrong {
-      color: var(--danger);
+      color: var(--color-error);
+      font-family: monospace;
       text-decoration: line-through;
     }
 
     .field-val.right {
-      color: var(--success);
-      font-weight: 600;
+      color: var(--color-success);
+      font-weight: 500;
     }
 
     .field-val.explain {
-      color: var(--text-main);
-      font-style: italic;
+      color: var(--color-text-primary);
     }
 
     .empty-timeline {
@@ -698,35 +826,37 @@
       align-items: center;
       justify-content: center;
       height: 100%;
-      color: var(--text-muted);
+      color: var(--color-text-secondary);
       text-align: center;
-      padding: 2rem;
+      padding: var(--space-8);
     }
 
     .empty-icon {
-      font-size: 2.5rem;
-      margin-bottom: 1rem;
-      opacity: 0.4;
+      font-size: 32px;
+      margin-bottom: var(--space-3);
+      opacity: 0.3;
     }
 
-    /* ── UTILITIES & DYNAMIC STATES ── */
+    /* ── UTILITIES & TOAST DYNAMIC STATES ── */
     .hidden {
       display: none !important;
     }
 
     .toast {
       position: fixed;
-      bottom: 2rem;
-      right: 2rem;
-      background: rgba(15, 18, 29, 0.9);
-      border: 1px solid var(--border-color);
-      padding: 1rem 1.5rem;
-      border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-      z-index: 9999;
+      bottom: var(--space-8);
+      right: var(--space-8);
+      background-color: var(--color-surface-raised);
+      border: 1px solid var(--color-border);
+      padding: var(--space-3) var(--space-5);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      z-index: 1000000;
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: var(--space-3);
+      font-size: 13px;
+      font-weight: 500;
       animation: toastIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
     }
 
@@ -735,274 +865,246 @@
       to { transform: translateY(0) scale(1); opacity: 1; }
     }
 
-    .toast.success { border-left: 4px solid var(--success); }
-    .toast.error { border-left: 4px solid var(--danger); }
-    .toast.warning { border-left: 4px solid var(--warning); }
+    .toast.success { border-left: 3px solid var(--color-success); }
+    .toast.error { border-left: 3px solid var(--color-error); }
+    .toast.warning { border-left: 3px solid var(--color-warning); }
 
-    /* ── AUTHENTICATION STYLES ── */
+    /* ── AUTHENTICATION COVER ── */
     .auth-screen {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: var(--bg-darker);
-      background-image: 
-        radial-gradient(at 10% 10%, rgba(99, 102, 241, 0.15) 0px, transparent 45%),
-        radial-gradient(at 90% 90%, rgba(168, 85, 247, 0.15) 0px, transparent 45%);
+      background-color: var(--color-canvas);
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 99999;
-      transition: opacity 0.4s ease, visibility 0.4s ease;
+      z-index: 100000;
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 250ms ease, visibility 250ms ease;
     }
+    
     .auth-screen.hidden {
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
     }
+    
     .auth-card {
       width: 100%;
-      max-width: 440px;
-      margin: 1.5rem;
-      padding: 3rem 2.5rem;
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+      max-width: 400px;
+      margin: var(--space-4);
+      padding: var(--space-8);
+      box-shadow: var(--shadow-md);
     }
+    
     .auth-tabs {
       display: flex;
-      border-bottom: 1px solid var(--border-color);
-      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: var(--space-6);
     }
+    
     .auth-tab {
       flex: 1;
       text-align: center;
-      padding: 0.75rem;
-      font-family: var(--font-display);
-      font-size: 1.1rem;
-      font-weight: 600;
-      color: var(--text-muted);
+      padding: var(--space-3);
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
       cursor: pointer;
-      transition: var(--transition-smooth);
+      transition: color 120ms ease, border-color 120ms ease;
       border-bottom: 2px solid transparent;
+      font-family: var(--font-display);
     }
+    
     .auth-tab.active {
-      color: var(--text-inverse);
-      border-bottom-color: var(--primary);
-      font-weight: 700;
-      text-shadow: 0 0 10px var(--primary-glow);
+      color: var(--color-text-primary);
+      border-bottom-color: var(--color-primary);
+      font-weight: 600;
     }
 
-    /* ── PROGRESS & TIMELINE DRAWER STYLES ── */
-    .progress-drawer {
-      position: fixed;
-      right: -460px;
-      top: 0;
-      width: 460px;
-      height: 100vh;
-      background: var(--bg-dark);
-      border-left: 1px solid var(--border-color);
-      z-index: 10000;
-      box-shadow: -10px 0 30px rgba(0,0,0,0.5);
-      transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-      padding: 2.5rem 2rem;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
+    /* ── PROGRESS & TIMELINE INLINE STYLES ── */
+    #progress-section {
+      margin-top: var(--space-8);
     }
-    .progress-drawer.open {
-      right: 0;
-    }
-    .drawer-header {
+    
+    .progress-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 1rem;
-      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: var(--space-4);
+      margin-bottom: var(--space-6);
     }
-    .btn-close {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 2rem;
-      cursor: pointer;
-      line-height: 1;
-      transition: var(--transition-smooth);
-    }
-    .btn-close:hover {
-      color: var(--text-main);
-    }
-    .drawer-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0,0,0,0.5);
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
-      z-index: 9999;
-      display: none;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-    .drawer-overlay.active {
-      display: block;
-      opacity: 1;
-    }
-    .drawer-content {
-      flex: 1;
-    }
+    
     .stats-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
     }
+    
     .stat-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 1rem;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
       text-align: center;
     }
+    
     .stat-num {
-      font-size: 2rem;
-      font-family: var(--font-display);
-      font-weight: 700;
-      color: var(--primary);
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--color-primary);
     }
+    
     .stat-label {
-      font-size: 0.75rem;
-      color: var(--text-muted);
+      font-size: 11px;
+      color: var(--color-text-secondary);
       text-transform: uppercase;
-      margin-top: 0.25rem;
+      margin-top: var(--space-1);
+      font-weight: 500;
     }
+    
     .section-title {
-      font-size: 1rem;
-      font-family: var(--font-display);
-      font-weight: 700;
+      font-size: 12px;
+      font-weight: 600;
       text-transform: uppercase;
-      color: var(--text-inverse);
-      margin-top: 2rem;
-      margin-bottom: 1rem;
+      color: var(--color-text-primary);
+      margin-top: var(--space-8);
+      margin-bottom: var(--space-4);
       letter-spacing: 0.05em;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      padding-bottom: 0.25rem;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: var(--space-2);
     }
+    
     .vocab-cloud {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 1.5rem;
+      gap: var(--space-2);
+      margin-bottom: var(--space-6);
     }
+    
     .vocab-chip {
-      background: rgba(99, 102, 241, 0.1);
-      border: 1px solid rgba(99, 102, 241, 0.2);
-      color: #818cf8;
-      padding: 0.35rem 0.75rem;
-      border-radius: 8px;
-      font-size: 0.85rem;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      color: var(--color-text-primary);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
       display: inline-flex;
       align-items: center;
-      gap: 0.35rem;
+      gap: var(--space-2);
     }
+    
     .vocab-chip span {
-      font-size: 0.75rem;
-      color: var(--text-muted);
+      font-size: 11px;
+      color: var(--color-text-secondary);
     }
+    
     .vocab-empty, .grammar-empty {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      font-style: italic;
+      font-size: 13px;
+      color: var(--color-text-disabled);
     }
+    
     .grammar-insights-list {
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
-      margin-bottom: 1.5rem;
+      gap: var(--space-3);
+      margin-bottom: var(--space-6);
     }
+    
     .grammar-insight-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 0.75rem 1rem;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
       display: flex;
       flex-direction: column;
-      gap: 0.25rem;
+      gap: var(--space-2);
     }
+    
     .grammar-insight-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
+    
     .grammar-insight-topic {
       font-weight: 600;
-      color: var(--text-inverse);
-      font-size: 0.9rem;
+      color: var(--color-text-primary);
+      font-size: 13px;
     }
+    
     .grammar-insight-badge {
-      font-size: 0.7rem;
-      font-weight: 700;
-      padding: 0.15rem 0.5rem;
-      border-radius: 99px;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      text-transform: uppercase;
     }
+    
     .grammar-insight-badge.proficient {
-      color: var(--success);
-      background: var(--success-bg);
-      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--color-success);
+      border-color: var(--color-success);
+      background-color: var(--color-success-subtle);
     }
+    
     .grammar-insight-badge.needs-work {
-      color: var(--warning);
-      background: var(--warning-bg);
-      border: 1px solid rgba(245, 158, 11, 0.2);
+      color: var(--color-warning);
+      border-color: var(--color-warning);
+      background-color: var(--color-warning-subtle);
     }
+    
     .grammar-insight-details {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      line-height: 1.3;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      line-height: 1.4;
     }
+    
     .memories-timeline-list {
       display: flex;
       flex-direction: column;
-      gap: 1.25rem;
-      margin-top: 0.5rem;
+      gap: var(--space-4);
+      margin-top: var(--space-2);
     }
+    
     .timeline-item {
-      border-left: 2px solid var(--primary);
-      padding-left: 1.25rem;
-      margin-left: 0.5rem;
-      position: relative;
-      padding-bottom: 0.5rem;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
     }
-    .timeline-item::before {
-      content: '';
-      position: absolute;
-      left: -6px;
-      top: 4px;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--primary);
-      box-shadow: 0 0 8px var(--primary);
-    }
+    
     .timeline-item-title {
-      font-weight: 700;
-      color: var(--text-inverse);
-      font-size: 0.95rem;
-      margin-bottom: 0.25rem;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      font-size: 14px;
+      margin-bottom: 2px;
     }
+    
     .timeline-item-date {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
     }
+    
     .timeline-item-summary {
-      font-size: 0.85rem;
-      color: var(--text-muted);
+      font-size: 12px;
+      color: var(--color-text-secondary);
       line-height: 1.4;
     }
 
+    .animate-spin {
+      animation: spin 1.2s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -1011,7 +1113,16 @@
   <div id="auth-screen" class="auth-screen">
     <div class="auth-card glass-card">
       <div class="logo-container" style="justify-content: center; margin-bottom: 2rem;">
-        <div class="logo-icon">V</div>
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 26px; height: 26px;">
+            <circle cx="12" cy="12" r="10" fill="#58CC02"/>
+            <circle cx="8.5" cy="11.5" r="4" fill="white"/>
+            <circle cx="15.5" cy="11.5" r="4" fill="white"/>
+            <circle cx="8.5" cy="11.5" r="1.8" fill="#4B4B4B"/>
+            <circle cx="15.5" cy="11.5" r="1.8" fill="#4B4B4B"/>
+            <path d="M10.5 14L12 16L13.5 14H10.5Z" fill="#FF9600" stroke="#FF9600" stroke-width="1" stroke-linejoin="round"/>
+          </svg>
+        </div>
         <div class="logo-text">DuoVoice<span>Tutor</span></div>
       </div>
       
@@ -1038,57 +1149,23 @@
   </div>
 
   <!-- ── PROGRESS & MEMORIES DRAWER ── -->
-  <div id="progress-drawer" class="progress-drawer">
-    <div class="drawer-header">
-      <h3 style="font-size: 1.5rem; font-family: var(--font-display); color: var(--text-inverse); display: flex; align-items: center; gap: 0.5rem;">
-        Learning Progress
-        <button id="btn-refresh-progress" class="btn btn-secondary" style="padding: 0.25rem 0.50rem; font-size: 0.75rem; height: auto; margin-left: 0.5rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem;">
-          🔄 Refresh
-        </button>
-      </h3>
-      <button id="btn-close-drawer" class="btn-close">&times;</button>
-    </div>
-    
-    <div class="drawer-content">
-      <!-- Dynamic Stats summary -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-num" id="stat-sessions-count">0</div>
-          <div class="stat-label">Sessions</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-num" id="stat-vocab-count">0</div>
-          <div class="stat-label">Words Learned</div>
-        </div>
-      </div>
 
-      <!-- Tag Cloud: Vocabulary Learned -->
-      <h4 class="section-title">Vocabulary Learned</h4>
-      <div id="vocab-cloud" class="vocab-cloud">
-        <span class="vocab-empty">No vocabulary learned yet. Complete your first session!</span>
-      </div>
-
-      <!-- Grid list: Grammar Insights -->
-      <h4 class="section-title">Grammar Focus Areas</h4>
-      <div id="grammar-insights-list" class="grammar-insights-list">
-        <span class="grammar-empty">No grammar assessments yet.</span>
-      </div>
-
-      <!-- Timeline of session summaries -->
-      <h4 class="section-title">Session History & Memories</h4>
-      <div id="memories-timeline" class="memories-timeline-list">
-        <span class="vocab-empty">No sessions recorded yet.</span>
-      </div>
-    </div>
-  </div>
-  <div id="drawer-overlay" class="drawer-overlay"></div>
 
   <div class="container">
     
     <!-- ── HEADER ── -->
     <header>
       <div class="logo-container">
-        <div class="logo-icon">V</div>
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 26px; height: 26px;">
+            <circle cx="12" cy="12" r="10" fill="#58CC02"/>
+            <circle cx="8.5" cy="11.5" r="4" fill="white"/>
+            <circle cx="15.5" cy="11.5" r="4" fill="white"/>
+            <circle cx="8.5" cy="11.5" r="1.8" fill="#4B4B4B"/>
+            <circle cx="15.5" cy="11.5" r="1.8" fill="#4B4B4B"/>
+            <path d="M10.5 14L12 16L13.5 14H10.5Z" fill="#FF9600" stroke="#FF9600" stroke-width="1" stroke-linejoin="round"/>
+          </svg>
+        </div>
         <div class="logo-text">DuoVoice<span>Tutor</span></div>
       </div>
       
@@ -1096,7 +1173,8 @@
         <div id="user-header-controls" class="hidden" style="display: flex; align-items: center; gap: 1rem;">
           <span id="user-email-display" style="font-size: 0.9rem; color: var(--text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
           <button id="btn-view-progress" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">
-            📈 View Progress
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            View Progress
           </button>
           <button id="btn-logout" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(239, 68, 68, 0.3); color: #ef4444;">
             Sign Out
@@ -1129,6 +1207,51 @@
           </button>
         </div>
       </div>
+
+      <!-- ── PROGRESS & MEMORIES INLINE SECTION ── -->
+      <div id="progress-section" class="glass-card" style="margin-top: 3rem;">
+        <div class="progress-header">
+          <h3 style="font-size: 1.5rem; font-family: var(--font-display); display: flex; align-items: center; gap: 0.5rem;">
+            Learning Progress
+            <button id="btn-refresh-progress" class="btn btn-secondary" style="padding: 0.25rem 0.50rem; font-size: 0.75rem; height: auto; margin-left: 0.5rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+              Refresh
+            </button>
+          </h3>
+        </div>
+        
+        <div class="progress-content">
+          <!-- Dynamic Stats summary -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-num" id="stat-sessions-count">0</div>
+              <div class="stat-label">Sessions</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="stat-vocab-count">0</div>
+              <div class="stat-label">Words Learned</div>
+            </div>
+          </div>
+
+          <!-- Tag Cloud: Vocabulary Learned -->
+          <h4 class="section-title">Vocabulary Learned</h4>
+          <div id="vocab-cloud" class="vocab-cloud">
+            <span class="vocab-empty">No vocabulary learned yet. Complete your first session!</span>
+          </div>
+
+          <!-- Grid list: Grammar Insights -->
+          <h4 class="section-title">Grammar Focus Areas</h4>
+          <div id="grammar-insights-list" class="grammar-insights-list">
+            <span class="grammar-empty">No grammar assessments yet.</span>
+          </div>
+
+          <!-- Timeline of session summaries -->
+          <h4 class="section-title">Session History & Memories</h4>
+          <div id="memories-timeline" class="memories-timeline-list">
+            <span class="vocab-empty">No sessions recorded yet.</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ── STEP 2: ACTIVE VOICE SESSION PLAYGROUND ── -->
@@ -1142,7 +1265,9 @@
             <div id="ring-1" class="pulse-ring"></div>
             <div id="ring-2" class="pulse-ring"></div>
             <div id="ring-3" class="pulse-ring"></div>
-            <div id="visualizer" class="visualizer-core">🎙️</div>
+            <div id="visualizer" class="visualizer-core">
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </div>
           </div>
 
           <h3 id="session-scenario-title" class="call-meta-title">Coffee Shop Ordering</h3>
@@ -1156,13 +1281,13 @@
 
           <div class="controller-pad">
             <button id="btn-toggle-mic" class="btn btn-secondary">
-              <span>🔇</span> Mute Mic
+              <span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 11a6.97 6.97 0 0 1-1.09 3.76M5 10v2a7 7 0 0 0 10.74 5.86"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span> Mute Mic
             </button>
             <button id="btn-toggle-pause" class="btn btn-secondary">
-              <span>⏸️</span> Pause Tutor
+              <span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg></span> Pause Tutor
             </button>
             <button id="btn-complete-session" class="btn btn-danger">
-              <span>🛑</span> Complete Session
+              <span><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span> Complete Session
             </button>
           </div>
         </div>
@@ -1179,7 +1304,9 @@
           <div id="chat-timeline" class="scroll-timeline">
             <!-- Empty state default -->
             <div id="empty-state" class="empty-timeline">
-              <div class="empty-icon">🗣️</div>
+              <div class="empty-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="icon-svg" style="color: var(--color-text-secondary); opacity: 0.7;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </div>
               <p>Say hello to your tutor to begin! Real-time transcriptions and grammar feedback will populate here.</p>
             </div>
           </div>
@@ -1305,8 +1432,9 @@
             document.getElementById('user-header-controls').classList.remove('hidden');
             document.getElementById('user-email-display').textContent = session.user.email;
             
-            // Load scenarios
+            // Load scenarios and memories inline
             fetchScenarios();
+            fetchAndRenderMemories();
           } else {
             state.authToken = null;
             state.currentUser = null;
@@ -1365,15 +1493,21 @@
             if (error) throw error;
             showToast('Welcome back!', 'success');
           } else {
-            const { error, data } = await state.supabase.auth.signUp({ email, password });
-            if (error) throw error;
-            
-            // Check if user is automatically logged in or needs verification
-            if (data.session) {
-              showToast('Account created and logged in!', 'success');
-            } else {
-              showToast('Verification email sent! Please check your inbox.', 'warning');
+            const response = await fetch('/v1/auth/signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password })
+            });
+            const result = await response.json();
+            if (!response.ok || result.error) {
+              throw new Error(result.error?.message || 'Failed to register account.');
             }
+
+            // Automatically log in the user on successful signup
+            const { error: loginError } = await state.supabase.auth.signInWithPassword({ email, password });
+            if (loginError) throw loginError;
+
+            showToast('Account created and logged in!', 'success');
           }
         } catch (err) {
           console.error('[Auth Error]:', err);
@@ -1395,10 +1529,13 @@
         }
       });
 
-      // Progress drawer toggle
-      document.getElementById('btn-view-progress').addEventListener('click', toggleProgressDrawer);
-      document.getElementById('btn-close-drawer').addEventListener('click', toggleProgressDrawer);
-      document.getElementById('drawer-overlay').addEventListener('click', toggleProgressDrawer);
+      // View progress scroll behavior
+      document.getElementById('btn-view-progress').addEventListener('click', () => {
+        const progressSec = document.getElementById('progress-section');
+        if (progressSec) {
+          progressSec.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
 
       // Progress drawer refresh click listener
       document.getElementById('btn-refresh-progress').addEventListener('click', async (e) => {
@@ -1406,7 +1543,7 @@
         const btn = document.getElementById('btn-refresh-progress');
         const originalText = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '🔄 Syncing...';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg animate-spin"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg> Syncing...`;
         try {
           await fetchAndRenderMemories();
           showToast('Progress synced successfully!', 'success');
@@ -1419,26 +1556,7 @@
       });
     }
 
-    // ── PROGRESS DRAWER TOGGLERS ──
-    async function toggleProgressDrawer() {
-      const drawer = document.getElementById('progress-drawer');
-      const overlay = document.getElementById('drawer-overlay');
-      const isOpen = drawer.classList.contains('open');
-      
-      if (!isOpen) {
-        // Fetch memories and render them
-        await fetchAndRenderMemories();
-        drawer.classList.add('open');
-        overlay.classList.add('active');
-        overlay.style.display = 'block';
-      } else {
-        drawer.classList.remove('open');
-        overlay.classList.remove('active');
-        setTimeout(() => {
-          overlay.style.display = 'none';
-        }, 300);
-      }
-    }
+
 
     // ── PROGRESS & MEMORIES RENDERING ──
     async function fetchAndRenderMemories() {
@@ -1618,10 +1736,15 @@
           preview = preview.substring(0, 120) + '...';
         }
         
+        const difficultyText = level === 1 ? 'Beginner' : level === 3 ? 'Advanced' : 'Intermediate';
+
         card.innerHTML = `
+          <div class="scenario-card-header">
+            <div class="scenario-card-locale"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> es-ES</div>
+            <span class="scenario-badge level-${level}">${difficultyText}</span>
+          </div>
           <div class="scenario-title">${escapeHtml(title)}</div>
           <div class="scenario-description">${escapeHtml(preview)}</div>
-          <span class="scenario-badge level-${level}">Difficulty ${level}</span>
         `;
 
         card.addEventListener('click', () => {
@@ -1663,6 +1786,7 @@
         // Transition panel
         document.getElementById('step-setup').classList.add('hidden');
         document.getElementById('step-playground').classList.remove('hidden');
+        document.querySelector('header').classList.add('hidden');
         
         const scenario = state.scenarios.find(s => s.id === state.selectedScenarioId);
         document.getElementById('session-scenario-title').textContent = scenario ? scenario.title : 'Voice Practice Room';
@@ -1761,7 +1885,7 @@
         console.log("connectToWebRtc: Connecting to room...");
         await state.livekitRoom.connect(resolvedUrl, token);
         console.log("connectToWebRtc: Connected! Publishing microphone...");
-        await state.livekitRoom.localParticipant.enableCameraAndMicrophone(false, true);
+        await state.livekitRoom.localParticipant.setMicrophoneEnabled(true);
         console.log("connectToWebRtc: Microphone successfully published!");
         
       } catch (err) {
@@ -1829,21 +1953,21 @@
         if (turn.role === 'user' && turn.corrections && turn.corrections.error) {
           const badge = document.createElement('div');
           badge.className = 'correction-badge';
-          badge.innerHTML = '✨ Grammar Tip Available';
+          badge.innerHTML = 'Grammar Tip';
           
           const drawer = document.createElement('div');
           drawer.className = 'correction-drawer';
           drawer.innerHTML = `
             <div class="correction-field">
-              <span class="field-label">Learner Said:</span>
+              <span class="field-label">You said:</span>
               <span class="field-val wrong">${escapeHtml(turn.corrections.error)}</span>
             </div>
             <div class="correction-field">
-              <span class="field-label">Correct Spanish:</span>
+              <span class="field-label">Correction:</span>
               <span class="field-val right">${escapeHtml(turn.corrections.correction)}</span>
             </div>
             <div class="correction-field">
-              <span class="field-label">Tutor Tip:</span>
+              <span class="field-label">Explanation:</span>
               <span class="field-val explain">${escapeHtml(turn.corrections.explanation)}</span>
             </div>
           `;
@@ -1880,17 +2004,17 @@
         state.isMuted = !isCurrentlyMuted;
 
         if (state.isMuted) {
-          btn.innerHTML = '<span>🎙️</span> Unmute Mic';
+          btn.innerHTML = '<span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span> Unmute Mic';
           btn.className = 'btn btn-primary';
           core.className = 'visualizer-core muted';
-          core.textContent = '🔇';
+          core.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 11a6.97 6.97 0 0 1-1.09 3.76M5 10v2a7 7 0 0 0 10.74 5.86"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
           toggleVisualizerPulse(false);
           showToast('Microphone muted', 'warning');
         } else {
-          btn.innerHTML = '<span>🔇</span> Mute Mic';
+          btn.innerHTML = '<span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 11a6.97 6.97 0 0 1-1.09 3.76M5 10v2a7 7 0 0 0 10.74 5.86"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span> Mute Mic';
           btn.className = 'btn btn-secondary';
           core.className = 'visualizer-core';
-          core.textContent = '🎙️';
+          core.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
           toggleVisualizerPulse(true);
           showToast('Microphone active', 'success');
         }
@@ -1927,7 +2051,7 @@
           }
 
           state.isPaused = true;
-          btn.innerHTML = '<span>▶️</span> Resume Tutor';
+          btn.innerHTML = '<span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><polygon points="5 3 19 12 5 21 5 3"/></svg></span> Resume Tutor';
           btn.className = 'btn btn-primary';
           updateStatus('Conversation Paused', 'inactive');
           toggleVisualizerPulse(false);
@@ -1948,7 +2072,7 @@
           await connectToWebRtc(data.livekit_url, data.livekit_token);
 
           state.isPaused = false;
-          btn.innerHTML = '<span>⏸️</span> Pause Tutor';
+          btn.innerHTML = '<span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg></span> Pause Tutor';
           btn.className = 'btn btn-secondary';
           showToast('Session resumed successfully.', 'success');
         }
@@ -2023,9 +2147,9 @@
             if (newCount > initialCount) {
               clearInterval(pollInterval);
               showToast('Learning progress synced successfully!', 'success');
-              const drawer = document.getElementById('progress-drawer');
-              if (!drawer.classList.contains('open')) {
-                toggleProgressDrawer();
+              const progressSec = document.getElementById('progress-section');
+              if (progressSec) {
+                progressSec.scrollIntoView({ behavior: 'smooth' });
               }
             }
           } catch (err) {
@@ -2070,9 +2194,13 @@
       const toast = document.createElement('div');
       toast.className = `toast ${type}`;
       
-      let icon = '✨';
-      if (type === 'error') icon = '⚠️';
-      if (type === 'warning') icon = '⚡';
+      let icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+      if (type === 'error') {
+        icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+      }
+      if (type === 'warning') {
+        icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+      }
 
       toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
       document.body.appendChild(toast);
