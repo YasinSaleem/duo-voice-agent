@@ -5,7 +5,8 @@ import json
 # Add parent directory to sys.path to enable imports from agent/
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from context_loader import load_prior_context, redis
+from utils.context import load_prior_context
+from core.db import redis_client as redis
 
 def test_context_loader():
     print("[verify_context] Starting context loader verification tests...")

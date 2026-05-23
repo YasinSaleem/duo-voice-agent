@@ -31,8 +31,8 @@ from pipecat.frames.frames import (
     TextFrame,
 )
 
-from context_loader import load_prior_context
-from core.db import turns_col, redis_async_client as redis, write_turn
+from utils.context import load_prior_context
+from core.db import redis_async_client as redis, write_turn
 from prompts.tutor_policy import GLOBAL_TUTOR_POLICY
 from processors.text_chunker import ClauseBoundaryTextChunker
 from processors.speech_streamer import TutorSpeechStreamer
@@ -43,12 +43,7 @@ def build_system_prompt(scenario_system_prompt: str) -> str:
 
 # ── Helper Functions ───────────────────────────────────────────────────────────
 
-from utils.text import (
-    normalize_transcript_spacing,
-    drain_clause_boundary_phrases,
-    split_tts_phrases,
-    utterance_flush_delay
-)
+from utils.text import split_tts_phrases
 
 # ── Main Runner ───────────────────────────────────────────────────────────────
 async def run_agent(session_id: str, scenario_system_prompt: str):
@@ -124,7 +119,13 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     assistant_aggregator = context_aggregator.assistant()
 
     # 8. Custom User Turn Interceptor
-    user_turn_processor = UserTurnBufferProcessor(session_id, transport)
+    from core.db import enqueue_grammar_job
+    user_turn_processor = UserTurnBufferProcessor(
+        session_id=session_id,
+        transport=transport,
+        on_turn_persisted=write_turn,
+        on_grammar_job_enqueued=enqueue_grammar_job
+    )
     
     # 8b. Clause chunker + tutor text streamer for UI captions
     clause_chunker = ClauseBoundaryTextChunker()

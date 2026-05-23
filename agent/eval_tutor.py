@@ -7,7 +7,7 @@ from groq import Groq
 # Ensure we can import from the agent directory
 sys.path.append(os.path.dirname(__file__))
 from pipeline import build_system_prompt
-from grammar_worker import GRAMMAR_SYSTEM_PROMPT
+from prompts.grammar_policy import GRAMMAR_SYSTEM_PROMPT
 
 load_dotenv()
 
@@ -21,7 +21,7 @@ Vocabulary targets: el cafe (coffee), el agua (water).
 """
 
 def test_tutor_brevity_and_tags():
-    print("Running Test 1: Tutor Brevity and Lesson Tags...")
+    print("Running Test 1: Tutor Brevity...")
     messages = [
         {"role": "system", "content": build_system_prompt(SCENARIO_PROMPT)},
         {"role": "user", "content": "Hi, I'm ready to learn. What's the first word?"}
@@ -38,9 +38,10 @@ def test_tutor_brevity_and_tags():
     print(f"Agent Response:\n{content}\n")
     
     # Assertions
-    assert "<lesson_item>" in content, "Failed: Tutor did not emit a <lesson_item> tag for the first vocabulary introduction."
+    # The tutor should NOT emit <lesson_item> tags anymore as per user request #1.
+    assert "<lesson_item>" not in content, "Failed: Tutor emitted deprecated <lesson_item> tags."
     
-    words = content.replace("<lesson_item>", "").replace("</lesson_item>", "").split()
+    words = content.split()
     assert len(words) < 50, f"Failed: Tutor response was too verbose ({len(words)} words). Should be 1-2 short sentences."
     print("✅ Test 1 Passed\n")
 

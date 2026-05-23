@@ -2,7 +2,6 @@ import core.bootstrap
 import asyncio
 import json
 import os
-import sys
 
 from groq import Groq
 from core.db import turns_col, redis_client as redis, supabase

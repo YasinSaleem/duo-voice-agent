@@ -3,7 +3,6 @@ import json
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from pipecat.frames.frames import Frame, EndFrame, TranscriptionFrame
 from utils.text import normalize_transcript_spacing, utterance_flush_delay
-from core.db import write_turn, enqueue_grammar_job
 
 class UserTurnBufferProcessor(FrameProcessor):
     """
@@ -11,10 +10,12 @@ class UserTurnBufferProcessor(FrameProcessor):
     the LLM or grammar queue. This avoids fragmentary turns like "Mi" or
     "no gusta" being treated as complete user messages.
     """
-    def __init__(self, session_id: str, transport):
+    def __init__(self, session_id: str, transport, on_turn_persisted=None, on_grammar_job_enqueued=None):
         super().__init__()
         self.session_id = session_id
         self.transport = transport
+        self.on_turn_persisted = on_turn_persisted
+        self.on_grammar_job_enqueued = on_grammar_job_enqueued
         self._buffered_frames: list[TranscriptionFrame] = []
         self._flush_task: asyncio.Task | None = None
 
@@ -81,12 +82,18 @@ class UserTurnBufferProcessor(FrameProcessor):
         )
 
         print(f"[UserTurnBufferProcessor] Flushing merged user turn: {merged_text}")
-        turn_id = await write_turn(self.session_id, "user", merged_text)
-        await enqueue_grammar_job(self.session_id, turn_id)
+        
+        turn_id = None
+        if self.on_turn_persisted:
+            turn_id = await self.on_turn_persisted(self.session_id, "user", merged_text)
+            
+        if turn_id and self.on_grammar_job_enqueued:
+            await self.on_grammar_job_enqueued(self.session_id, turn_id)
+
         try:
             payload = json.dumps({
                 "type": "user_turn_final",
-                "turnId": turn_id,
+                "turnId": turn_id if turn_id else "",
                 "text": merged_text,
             })
             await self.transport.send_message(payload)
