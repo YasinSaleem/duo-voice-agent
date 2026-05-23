@@ -85,6 +85,43 @@ class LLMFirstTokenLogger(FrameProcessor):
 
         await self.push_frame(frame, direction)
 
+
+class TimedGroqLLMService(GroqLLMService):
+    def __init__(self, *args, context=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._latency_enabled = os.environ.get("LATENCY_TRACE", "0") == "1"
+        self._context_ref = context
+
+    def _context_stats(self) -> str:
+        if not self._context_ref:
+            return "context_stats=unavailable"
+        try:
+            messages = list(self._context_ref.messages)
+        except Exception:
+            return "context_stats=unavailable"
+
+        def _count_words(text: str) -> int:
+            return len(text.split())
+
+        total_chars = sum(len(m.get("content", "")) for m in messages)
+        total_words = sum(_count_words(m.get("content", "")) for m in messages)
+        system_chars = len(messages[0].get("content", "")) if messages else 0
+        system_words = _count_words(messages[0].get("content", "")) if messages else 0
+        history_chars = total_chars - system_chars
+        history_words = total_words - system_words
+
+        return (
+            f"context_chars={total_chars} context_words={total_words} "
+            f"system_chars={system_chars} system_words={system_words} "
+            f"history_chars={history_chars} history_words={history_words}"
+        )
+
+    def get_chat_completions(self, *args, **kwargs):
+        if self._latency_enabled:
+            now = time.perf_counter()
+            print(f"[Latency] groq_request_start at +{now:.3f}s | {self._context_stats()}")
+        return super().get_chat_completions(*args, **kwargs)
+
 def build_system_prompt(scenario_system_prompt: str) -> str:
     return f"{GLOBAL_TUTOR_POLICY.strip()}\n\nScenario instructions:\n{scenario_system_prompt.strip()}"
 
@@ -136,17 +173,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         )
     )
 
-    # 4. Groq LLM Service (Spanish language tutor model)
-    llm_max_tokens = int(os.environ.get("GROQ_MAX_COMPLETION_TOKENS", "120"))
-    llm = GroqLLMService(
-        api_key=os.environ["GROQ_API_KEY"],
-        settings=GroqLLMService.Settings(
-            model="llama-3.1-8b-instant",
-            max_completion_tokens=llm_max_tokens,
-        ),
-    )
-
-    # 5. Deepgram TTS — TOKEN mode; clause chunker upstream sends phrase-sized TextFrames
+    # 4. Deepgram TTS — TOKEN mode; clause chunker upstream sends phrase-sized TextFrames
     tts = DeepgramTTSService(
         api_key=os.environ["DEEPGRAM_API_KEY"],
         text_aggregation_mode=TextAggregationMode.TOKEN,
@@ -154,12 +181,23 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     )
 
 
-    # 6. LLM Context Initialization
+    # 5. LLM Context Initialization
     messages = [{"role": "system", "content": build_system_prompt(scenario_system_prompt)}]
     messages.extend(prior_messages)
 
     context = LLMContext(messages)
     context_aggregator = LLMContextAggregatorPair(context)
+
+    # 6. Groq LLM Service (Spanish language tutor model)
+    llm_max_tokens = int(os.environ.get("GROQ_MAX_COMPLETION_TOKENS", "120"))
+    llm = TimedGroqLLMService(
+        api_key=os.environ["GROQ_API_KEY"],
+        settings=GroqLLMService.Settings(
+            model="llama-3.1-8b-instant",
+            max_completion_tokens=llm_max_tokens,
+        ),
+        context=context,
+    )
 
     # 7. Single instantiation of aggregators to prevent event routing bugs
     user_aggregator = context_aggregator.user()
@@ -200,6 +238,20 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
 
     # ── Pipeline Hooks and Event Handlers ─────────────────────────────────────
+    @user_aggregator.event_handler("on_user_turn_started")
+    async def on_user_turn_started(processor, message, *args):
+        if os.environ.get("LATENCY_TRACE", "0") == "1":
+            print(f"[Latency] aggregator_user_turn_started at +{time.perf_counter():.3f}s")
+
+    @user_aggregator.event_handler("on_user_turn_inference_triggered")
+    async def on_user_turn_inference_triggered(processor, message, *args):
+        if os.environ.get("LATENCY_TRACE", "0") == "1":
+            print(f"[Latency] aggregator_inference_triggered at +{time.perf_counter():.3f}s")
+
+    @user_aggregator.event_handler("on_user_turn_stopped")
+    async def on_user_turn_stopped(processor, message, *args):
+        if os.environ.get("LATENCY_TRACE", "0") == "1":
+            print(f"[Latency] aggregator_user_turn_stopped at +{time.perf_counter():.3f}s")
     
     @transport.event_handler("on_first_participant_joined")
     async def on_first_participant_joined(transport, participant_id):
