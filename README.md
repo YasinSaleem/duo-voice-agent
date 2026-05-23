@@ -67,7 +67,21 @@ cd api
 npm run dev:all
 ```
 
-This starts the API, grammar worker, and memory worker. The agent process is spawned on demand via LiveKit webhooks.
+This starts the API, grammar worker, and memory worker concurrently. The agent process is spawned on demand via LiveKit webhooks when a user joins.
+
+If you want to run the components individually:
+
+```bash
+# Run Express API server (from api/)
+cd api
+npm run dev
+
+# Run Grammar worker (from project root)
+python3 -m agent.workers.grammar_worker
+
+# Run Memory worker (from project root)
+python3 -m agent.workers.memory_worker
+```
 
 ## LiveKit Webhook (Local Tunnel)
 
@@ -83,22 +97,33 @@ https://<your-tunnel>.trycloudflare.com/internal/livekit/webhook
 
 ## Diagnostics
 
+Diagnostics verify your environments, config formats, and API credentials/external connectivity (MongoDB, Upstash, LiveKit, Groq, Deepgram, Supabase).
+
 ```bash
+# Express API / Webhook diagnostics (from api/)
 cd api
 npm run doctor
-
-cd ../agent
-python3 doctor.py
-
-cd ../api
 npx ts-node src/verify_webhook.ts
+
+# Python Agent diagnostics (from project root)
+cd ..
+python3 -m agent.tools.doctor
 ```
 
-## Evaluation Scripts
+## Evaluation & Benchmark Scripts
+
+All Python validation, trace, and streaming evaluation scripts must be run from the **project root directory** using Python's module syntax `-m` to ensure absolute imports resolve correctly:
 
 ```bash
-python3 agent/evaluation/eval_tutor.py
-python3 agent/experiments/verify_groq_streaming.py
-python3 agent/experiments/trace_pipecat_streaming.py
-python3 agent/experiments/verify_deepgram_tts_streaming.py
+# LLM Regression Harness (tutor brevity, English fallback, grammar ignores)
+python3 -m agent.evaluation.eval_tutor
+
+# Groq Streaming TTFT & completion benchmark
+python3 -m agent.experiments.verify_groq_streaming
+
+# Pipecat pipeline trace (detailed step timings)
+python3 -m agent.experiments.trace_pipecat_streaming
+
+# Deepgram TTS streaming & cold-start benchmark
+python3 -m agent.experiments.verify_deepgram_tts_streaming
 ```

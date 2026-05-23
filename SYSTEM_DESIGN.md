@@ -117,17 +117,22 @@ Component-level scripts (not full LiveKit sessions):
 
 ## 🧪 Testing & Evaluation
 
+All Python validation and trace scripts must be run from the **project root directory** using the module syntax (`python3 -m <module>`) to ensure absolute imports resolve correctly.
+
 - **LLM regression harness:** `agent/evaluation/eval_tutor.py`
+  - Run command: `python3 -m agent.evaluation.eval_tutor`
   - Validates tutor brevity, English fallback behavior, and grammar prompt robustness.
 
 - **Pipeline/infra verification:**
   - `agent/experiments/verify_pipeline.py` exercises LiveKit token minting, MongoDB writes, and Redis enqueue semantics.
+    - Run command: `python3 -m agent.experiments.verify_pipeline`
   - `agent/experiments/verify_grammar.py` validates grammar worker output schema and DB updates.
+    - Run command: `python3 -m agent.experiments.verify_grammar`
 
 - **Streaming/latency checks:**
-  - `agent/experiments/verify_groq_streaming.py`
-  - `agent/experiments/trace_pipecat_streaming.py`
-  - `agent/experiments/verify_deepgram_tts_streaming.py`
+  - `agent/experiments/verify_groq_streaming.py` (Run command: `python3 -m agent.experiments.verify_groq_streaming`)
+  - `agent/experiments/trace_pipecat_streaming.py` (Run command: `python3 -m agent.experiments.trace_pipecat_streaming`)
+  - `agent/experiments/verify_deepgram_tts_streaming.py` (Run command: `python3 -m agent.experiments.verify_deepgram_tts_streaming`)
 
 ## 💰 Costs
 
