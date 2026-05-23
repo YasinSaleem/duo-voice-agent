@@ -1,17 +1,8 @@
+import core.bootstrap
 import asyncio
 import json
 import os
 import sys
-from dotenv import load_dotenv
-load_dotenv()
-
-# Secure macOS SSL certificate override
-try:
-    import certifi
-    os.environ["SSL_CERT_FILE"] = certifi.where()
-    os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
-except ImportError:
-    pass
 
 from groq import Groq
 from motor.motor_asyncio import AsyncIOMotorClient

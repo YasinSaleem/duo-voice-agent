@@ -1,18 +1,9 @@
+import core.bootstrap
 import asyncio
 import json
 import os
 import re
 import time
-from dotenv import load_dotenv
-load_dotenv()
-
-# Secure macOS SSL certificate environment override to resolve CERTIFICATE_VERIFY_FAILED
-try:
-    import certifi
-    os.environ["SSL_CERT_FILE"] = certifi.where()
-    os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
-except ImportError:
-    pass
 
 
 from groq import Groq

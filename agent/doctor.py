@@ -1,3 +1,4 @@
+import core.bootstrap
 import os
 import sys
 import re
@@ -6,7 +7,6 @@ import urllib.request
 import json
 import asyncio
 import ssl
-from dotenv import load_dotenv
 
 # Terminal coloring
 class Colors:
@@ -19,13 +19,6 @@ class Colors:
 
 # Check for verbose flag
 verbose = "--verbose" in sys.argv
-
-# Load environment
-env_path = os.path.join(os.path.dirname(__file__), '.env')
-if os.path.exists(env_path):
-    load_dotenv(dotenv_path=env_path)
-else:
-    load_dotenv() # fallback
 
 print(f"{Colors.INFO} {Colors.BOLD}Starting Agent Environment Diagnostics...{Colors.RESET}\n")
 

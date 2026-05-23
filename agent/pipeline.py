@@ -1,19 +1,10 @@
+import core.bootstrap
 import asyncio
 import os
 import json
 import sys
 import re
 from datetime import datetime, timezone
-from dotenv import load_dotenv
-load_dotenv()
-
-# Secure macOS SSL certificate environment override to resolve CERTIFICATE_VERIFY_FAILED
-try:
-    import certifi
-    os.environ["SSL_CERT_FILE"] = certifi.where()
-    os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
-except ImportError:
-    pass
 
 
 # Pipecat 1.2.1 imports
