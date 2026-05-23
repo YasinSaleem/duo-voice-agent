@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from '../types';
 import { supabaseAdmin } from '../db/supabase';
 import { getTurnsCollection } from '../db/mongo';
 import { createLiveKitToken, removeAgentParticipant, spawnAgent } from '../services/livekit';
-import { cacheResumeTurns, enqueueMemoryJob, getAgentPid, clearAgentPid, getAgentSpeakingText } from '../services/redis';
+import { cacheResumeTurns, enqueueMemoryJob, getAgentPid, clearAgentPid, getAgentSpeakingText, redis } from '../services/redis';
 
 const router = Router();
 
@@ -254,6 +254,13 @@ router.post('/:session_id/resume', async (req: Request, res: Response): Promise<
       console.warn('[Sessions Route] Failed to terminate agent process before resume:', err);
     }
 
+    // Ensure the spawn lock is cleared so that spawnAgent doesn't block on the concurrency lock
+    try {
+      await redis.del(`agent_spawn:${session_id}`);
+    } catch (err) {
+      console.warn(`[Sessions Route] Failed to clear agent_spawn lock before resume:`, err);
+    }
+
     // 8. Spawn the Python tutor agent process in the background immediately
     try {
       console.log(`[Sessions Route] Resuming session: spawning agent for session ${session_id}...`);
@@ -382,6 +389,13 @@ router.patch('/:session_id/status', async (req: Request, res: Response): Promise
         await removeAgentParticipant(session_id);
       } catch (err) {
         console.warn('[Sessions] Failed to remove agent on pause:', err);
+      }
+
+      // Clear the spawn lock so the user can immediately resume without waiting 60s
+      try {
+        await redis.del(`agent_spawn:${session_id}`);
+      } catch (err) {
+        console.warn('[Sessions] Failed to clear agent_spawn lock on pause:', err);
       }
 
       try {

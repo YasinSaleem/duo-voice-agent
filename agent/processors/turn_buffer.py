@@ -36,6 +36,13 @@ class UserTurnBufferProcessor(FrameProcessor):
         if not text:
             return
 
+        # Strip all punctuation/symbols to check if there is any actual linguistic content
+        import re
+        clean_text = re.sub(r"[^\w\s]", "", text).strip()
+        if not clean_text:
+            print(f"[UserTurnBufferProcessor] Discarding STT noise/symbol-only artifact: '{text}'")
+            return
+
         print(f"[UserTurnBufferProcessor] Buffering transcript chunk: {text}")
         buffered_frame = TranscriptionFrame(
             text=text,
