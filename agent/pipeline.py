@@ -31,32 +31,8 @@ from pipecat.frames.frames import (
     TextFrame,
 )
 
-from motor.motor_asyncio import AsyncIOMotorClient
-from upstash_redis.asyncio import Redis
 from context_loader import load_prior_context
-from supabase import create_client, Client
-
-# ── Database & Redis Connections ──────────────────────────────────────────────
-tls_kwargs = {}
-try:
-    import certifi
-    tls_kwargs["tlsCAFile"] = certifi.where()
-except ImportError:
-    pass
-
-mongo_client = AsyncIOMotorClient(os.environ["MONGO_URI"], **tls_kwargs)
-turns_col = mongo_client["language_tutor"]["turns"]
-
-redis = Redis(
-    url=os.environ["UPSTASH_REDIS_REST_URL"],
-    token=os.environ["UPSTASH_REDIS_REST_TOKEN"]
-)
-
-supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-supabase: Client | None = None
-if supabase_url and supabase_key:
-    supabase = create_client(supabase_url, supabase_key)
+from core.db import turns_col, redis_async_client as redis
 
 GLOBAL_TUTOR_POLICY = """
 You are a warm, encouraging, patient, and naturally positive beginner-first Spanish tutor for a live voice lesson.

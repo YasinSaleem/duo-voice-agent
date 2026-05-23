@@ -5,8 +5,7 @@ import os
 import sys
 
 from groq import Groq
-from motor.motor_asyncio import AsyncIOMotorClient
-from supabase import create_client, Client
+from core.db import turns_col, redis_client as redis, supabase
 
 # ------------------------------------------------------------------------------
 # Single-Worker Low-Throughput Background Processor Wording:
@@ -20,23 +19,6 @@ from supabase import create_client, Client
 
 # Initialize Services
 groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
-
-tls_kwargs = {"tlsCAFile": certifi.where()} if "certifi" in sys.modules else {}
-mongo_client = AsyncIOMotorClient(os.environ["MONGO_URI"], **tls_kwargs)
-turns_col = mongo_client["language_tutor"]["turns"]
-
-# Initialize official Supabase client using Service Role key
-supabase: Client = create_client(
-    os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-)
-
-# Connect to Upstash Redis
-from upstash_redis import Redis
-redis = Redis(
-    url=os.environ["UPSTASH_REDIS_REST_URL"],
-    token=os.environ["UPSTASH_REDIS_REST_TOKEN"]
-)
 
 MEMORY_SYSTEM_PROMPT = """
 You are a warm, expert Spanish tutor's pedagogical assistant.

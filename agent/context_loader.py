@@ -1,16 +1,6 @@
+import core.bootstrap
 import json
-import os
-from dotenv import load_dotenv
-from upstash_redis import Redis
-
-# Load environment variables from .env
-load_dotenv()
-
-# Lazily initialize Redis client using environment variables
-redis = Redis(
-    url=os.environ["UPSTASH_REDIS_REST_URL"],
-    token=os.environ["UPSTASH_REDIS_REST_TOKEN"]
-)
+from core.db import redis_client as redis
 
 def load_prior_context(session_id: str) -> list[dict]:
     """

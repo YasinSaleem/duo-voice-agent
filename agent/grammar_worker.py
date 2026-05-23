@@ -7,27 +7,10 @@ import time
 
 
 from groq import Groq
-from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-from upstash_redis import Redis
+from core.db import turns_col, redis_client as redis
 
-# ── Services Initialization ───────────────────────────────────────────────────
 groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
-
-tls_kwargs = {}
-try:
-    import certifi
-    tls_kwargs["tlsCAFile"] = certifi.where()
-except ImportError:
-    pass
-
-mongo_client = AsyncIOMotorClient(os.environ["MONGO_URI"], **tls_kwargs)
-turns_col = mongo_client["language_tutor"]["turns"]
-
-redis = Redis(
-    url=os.environ["UPSTASH_REDIS_REST_URL"],
-    token=os.environ["UPSTASH_REDIS_REST_TOKEN"]
-)
 
 # ── Grammar Evaluation Specifications ─────────────────────────────────────────
 GRAMMAR_SYSTEM_PROMPT = """
