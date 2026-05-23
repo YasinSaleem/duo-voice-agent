@@ -67,45 +67,37 @@ supabase: Client | None = None
 if supabase_url and supabase_key:
     supabase = create_client(supabase_url, supabase_key)
 
-LESSON_TAG_START = "<lesson_item>"
-LESSON_TAG_END = "</lesson_item>"
-
 GLOBAL_TUTOR_POLICY = """
-You are a warm, patient, beginner-first Spanish tutor for a live voice lesson.
+You are a warm, encouraging, patient, and naturally positive beginner-first Spanish tutor for a live voice lesson.
+Your goal is to make the learner feel comfortable, built up, and confident as they learn.
 This global policy is higher priority than scenario instructions. Scenario prompts only supply lesson content.
 
 Core behavior:
-- Teach like a structured language teacher, not a roleplay character.
+- Teach like a structured, warm, and highly supportive language tutor, not a rigid or cold roleplay character.
+- Always use warm positive reinforcement and naturally positive encouragement! Praise correct repetitions or use with words like "¡Muy bien!", "¡Perfecto!", "¡Excelente!", or "Great job!"
 - Use English as the primary instructional language at the start and add Spanish gradually after mastery.
-- Voice-first brevity is mandatory: default to ONE short sentence (under ~20 words). Use TWO short sentences only when necessary. Never use three or more sentences in one turn.
-- Do not preamble, recap at length, or stack multiple teaching points in a single reply.
+- Voice-first brevity is mandatory: default to ONE short, friendly sentence (under ~20 words). Use TWO short sentences only when necessary. Never use three or more sentences in one turn.
+- Do not preamble, recap at length, or stack multiple teaching points in a single reply. Keep the interaction friendly, direct, and conversational.
 - Ask at most one question at a time.
 - Follow the scenario lesson plan exactly: teach vocab and phrases in the given order and do not add new targets.
-- For each target: explain in English, give the Spanish, then ask the learner to repeat or use it.
+- For each target: explain in English with a supportive tone, give the Spanish, then ask the learner to repeat or use it.
 - Mastery rule: 2 correct repetitions OR 1 correct contextual use.
-- If the learner struggles for about 3 failed attempts, shift back to more English guidance and simplify.
-- After all targets are mastered, mark the lesson complete and offer: continue practicing or end the lesson/call.
+- If the learner struggles for about 3 failed attempts, offer patient reassurance, shift back to more English guidance, simplify, and remind them that mistakes are a completely normal and positive part of learning.
+- After all targets are mastered, mark the lesson complete and offer in a friendly way: continue practicing or end the lesson/call.
 - If the learner asks for English or seems confused, respond briefly in English and guide the next step.
-- If the learner goes off-topic, respond briefly in English and return to the current step.
+- If the learner goes off-topic, acknowledge it in a supportive manner in English and return to the current step.
 - Do not give long vocabulary lectures unless explicitly asked.
 - Do not invent phonetic spellings unless the learner explicitly asks for pronunciation help.
 
-Lesson checkpointing (structured, no guessing):
-- When you introduce a NEW lesson item (vocabulary or phrase) for the first time, append a metadata tag on a new line:
-    <lesson_item>{"type":"vocab"|"phrase","spanish":"...","english":"..."}</lesson_item>
-- Only emit this tag for the first introduction of a lesson item.
-- Never speak or explain the tag; it will be removed before audio output.
-
 Resume recap behavior:
-- If a lesson checkpoint exists (introduced_items/last_item), use ONE short sentence to recall last_item, then ask the learner to repeat it. Do not add extra explanation in that same turn.
-- Then continue with the next lesson item.
+- If resuming a session, warmly greet the user, briefly recap that you are continuing their friendly Spanish lesson, and ask if they are ready to jump back in.
 
 Correction style:
-- Focus on helping spoken Spanish.
+- Focus on helping spoken Spanish with a supportive, patient, and non-judgmental attitude.
 - Prefer implicit modeling over heavy correction during the live conversation.
 - Give at most one small correction at a time, only when it is useful.
 - Never comment on commas, punctuation, capitalization, accent marks (tildes), or typing conventions in the live lesson. These are speech-to-text transcription artifacts out of the user's hands.
-- If the learner uses English to ask for help, answer that help request instead of pretending they completed the Spanish task.
+- If the learner uses English to ask for help, answer that help request in a warm, helpful manner instead of pretending they completed the Spanish task.
 
 Language policy:
 - Start in English for instruction and structure.
@@ -209,175 +201,36 @@ def utterance_flush_delay(text: str) -> float:
         return 0.60
     return 2.00
 
-def strip_lesson_item_tags(text: str) -> str:
-    if LESSON_TAG_START not in text:
-        return text
-    output = []
-    remaining = text
-    while True:
-        start_idx = remaining.find(LESSON_TAG_START)
-        if start_idx == -1:
-            output.append(remaining)
-            break
-        output.append(remaining[:start_idx])
-        end_idx = remaining.find(LESSON_TAG_END, start_idx + len(LESSON_TAG_START))
-        if end_idx == -1:
-            break
-        remaining = remaining[end_idx + len(LESSON_TAG_END):]
-    return "".join(output).strip()
-
-def parse_lesson_item_payload(payload: str) -> dict | None:
-    try:
-        item = json.loads(payload)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(item, dict):
-        return None
-    if item.get("type") not in {"vocab", "phrase"}:
-        return None
-    spanish = item.get("spanish")
-    english = item.get("english")
-    if not spanish or not english:
-        return None
-    return {
-        "type": item["type"],
-        "spanish": str(spanish).strip(),
-        "english": str(english).strip()
-    }
-
-class LessonCheckpointStore:
-    def __init__(self, session_id: str):
-        self.session_id = session_id
-        self.user_id: str | None = None
-        self.introduced_items: list[dict] = []
-        self.introduced_keys: set[str] = set()
-        self.last_item: dict | None = None
-
-    def _item_key(self, item: dict) -> str:
-        return f"{item.get('type')}|{item.get('spanish', '').lower().strip()}"
-
-    async def load(self):
-        if not supabase:
-            return
-        try:
-            res = supabase.table("lesson_states").select("introduced_items, last_item, user_id").eq("session_id", self.session_id).execute()
-            if res.data and len(res.data) > 0:
-                row = res.data[0]
-                self.user_id = row.get("user_id")
-                self.introduced_items = row.get("introduced_items") or []
-                self.last_item = row.get("last_item")
-                for item in self.introduced_items:
-                    if isinstance(item, dict):
-                        self.introduced_keys.add(self._item_key(item))
-                return
-        except Exception as e:
-            print(f"[LessonCheckpoint] Failed to load lesson state: {e}")
-
-        try:
-            sess_res = supabase.table("sessions").select("user_id").eq("id", self.session_id).execute()
-            if sess_res.data and len(sess_res.data) > 0:
-                self.user_id = sess_res.data[0].get("user_id")
-        except Exception as e:
-            print(f"[LessonCheckpoint] Failed to fetch user id: {e}")
-
-        if self.user_id:
-            try:
-                supabase.table("lesson_states").insert({
-                    "session_id": self.session_id,
-                    "user_id": self.user_id
-                }).execute()
-            except Exception as e:
-                print(f"[LessonCheckpoint] Failed to create lesson state row: {e}")
-
-    async def record_item(self, item: dict):
-        if not supabase:
-            return
-        key = self._item_key(item)
-        if key not in self.introduced_keys:
-            self.introduced_keys.add(key)
-            self.introduced_items.append(item)
-        self.last_item = item
-        try:
-            supabase.table("lesson_states").update({
-                "introduced_items": self.introduced_items,
-                "last_item": self.last_item
-            }).eq("session_id", self.session_id).execute()
-        except Exception as e:
-            print(f"[LessonCheckpoint] Failed to update lesson state: {e}")
-
-class LessonItemProcessor(FrameProcessor):
-    def __init__(self, session_id: str, checkpoint_store: LessonCheckpointStore):
-        super().__init__()
-        self.session_id = session_id
-        self.checkpoint_store = checkpoint_store
-        self._buffer = ""
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, TextFrame):
-            cleaned, items, buffer = self._extract_items(self._buffer + frame.text)
-            self._buffer = buffer
-            for item in items:
-                await self.checkpoint_store.record_item(item)
-            if cleaned:
-                frame.text = cleaned
-                await self.push_frame(frame, direction)
-            return
-
-        await self.push_frame(frame, direction)
-
-    def _extract_items(self, text: str) -> tuple[str, list[dict], str]:
-        items: list[dict] = []
-        output: list[str] = []
-        remaining = text
-
-        while True:
-            start_idx = remaining.find(LESSON_TAG_START)
-            if start_idx == -1:
-                suffix = self._tag_prefix_suffix(remaining)
-                if suffix:
-                    output.append(remaining[:-len(suffix)])
-                    buffer = suffix
-                else:
-                    output.append(remaining)
-                    buffer = ""
-                return "".join(output), items, buffer
-
-            output.append(remaining[:start_idx])
-            end_idx = remaining.find(LESSON_TAG_END, start_idx + len(LESSON_TAG_START))
-            if end_idx == -1:
-                buffer = remaining[start_idx:]
-                return "".join(output), items, buffer
-
-            payload = remaining[start_idx + len(LESSON_TAG_START):end_idx].strip()
-            item = parse_lesson_item_payload(payload)
-            if item:
-                items.append(item)
-            remaining = remaining[end_idx + len(LESSON_TAG_END):]
-
-    def _tag_prefix_suffix(self, text: str) -> str:
-        max_len = min(len(text), len(LESSON_TAG_START) - 1)
-        for length in range(max_len, 0, -1):
-            if LESSON_TAG_START.startswith(text[-length:]):
-                return text[-length:]
-        return ""
+# Lesson checkpoint tracking and metadata tag processors have been removed.
 
 class ClauseBoundaryTextChunker(FrameProcessor):
     """
     Buffer streaming LLM text and forward phrase-sized TextFrames at punctuation
     boundaries (comma, period, question mark, etc.) so TTS/audio can start early
     without synthesizing every token separately.
+
+    Enhancement: Single-word clause phrases are buffered and grouped with the next phrase
+    to prevent unnatural speech pauses in the TTS pipeline.
     """
 
     def __init__(self):
         super().__init__()
         self._buffer = ""
+        self._pending_phrase = ""
+
+    def is_single_word(self, text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return False
+        words = stripped.split()
+        return len(words) <= 1
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMFullResponseStartFrame):
             self._buffer = ""
+            self._pending_phrase = ""
             await self.push_frame(frame, direction)
             return
 
@@ -385,13 +238,47 @@ class ClauseBoundaryTextChunker(FrameProcessor):
             self._buffer += frame.text
             phrases, self._buffer = drain_clause_boundary_phrases(self._buffer)
             for phrase in phrases:
-                await self.push_frame(TextFrame(phrase), direction)
+                if self._pending_phrase:
+                    combined = self._pending_phrase + " " + phrase
+                    if self.is_single_word(combined):
+                        self._pending_phrase = combined
+                    else:
+                        await self.push_frame(TextFrame(combined), direction)
+                        self._pending_phrase = ""
+                else:
+                    if self.is_single_word(phrase):
+                        self._pending_phrase = phrase
+                    else:
+                        await self.push_frame(TextFrame(phrase), direction)
             return
 
         if isinstance(frame, LLMFullResponseEndFrame):
+            # Flush any remaining text from the drain buffer
             if self._buffer.strip():
-                await self.push_frame(TextFrame(self._buffer), direction)
-            self._buffer = ""
+                phrases, remainder = drain_clause_boundary_phrases(self._buffer)
+                if remainder.strip():
+                    phrases.append(remainder.strip())
+                self._buffer = ""
+                
+                for phrase in phrases:
+                    if self._pending_phrase:
+                        combined = self._pending_phrase + " " + phrase
+                        if self.is_single_word(combined):
+                            self._pending_phrase = combined
+                        else:
+                            await self.push_frame(TextFrame(combined), direction)
+                            self._pending_phrase = ""
+                    else:
+                        if self.is_single_word(phrase):
+                            self._pending_phrase = phrase
+                        else:
+                            await self.push_frame(TextFrame(phrase), direction)
+            
+            # Flush any remaining pending phrase
+            if self._pending_phrase.strip():
+                await self.push_frame(TextFrame(self._pending_phrase.strip()), direction)
+                self._pending_phrase = ""
+                
             await self.push_frame(frame, direction)
             return
 
@@ -514,8 +401,6 @@ class UserTurnBufferProcessor(FrameProcessor):
 async def run_agent(session_id: str, scenario_system_prompt: str):
     # Load turn history (empty list if new session, last 10 turns if resumed)
     prior_messages = load_prior_context(session_id)
-    checkpoint_store = LessonCheckpointStore(session_id)
-    await checkpoint_store.load()
 
     try:
         await redis.set(f"agent_pid:{session_id}", str(os.getpid()), ex=3600)
@@ -591,7 +476,6 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     # 8b. Clause chunker + tutor text streamer for UI captions
     clause_chunker = ClauseBoundaryTextChunker()
     tutor_speech_streamer = TutorSpeechStreamer(transport, session_id)
-    lesson_item_processor = LessonItemProcessor(session_id, checkpoint_store)
 
     # 9. Pipecat Pipeline Assembly
     pipeline = Pipeline([
@@ -600,7 +484,6 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         user_turn_processor,         # Downstream of stt
         user_aggregator,             # Pre-instantiated user aggregator
         llm,
-        lesson_item_processor,       # Strip metadata + update checkpoint store
         clause_chunker,              # Flush TTS-sized phrases at punctuation boundaries
         tutor_speech_streamer,       # Stream text chunks in real-time
         tts,
@@ -618,18 +501,10 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         print(f"[Pipeline] First participant joined room. ID: {participant_id}")
         
         # Greet the user based on whether this is a new or resumed session
-        if prior_messages and checkpoint_store.last_item:
-            last_item = checkpoint_store.last_item
-            spanish = last_item.get("spanish") if isinstance(last_item, dict) else None
-            english = last_item.get("english") if isinstance(last_item, dict) else None
-            if spanish and english:
-                greeting = f"Welcome back. Repeat {spanish} — that means {english}."
-            else:
-                greeting = "Welcome back. Ready to continue?"
-        elif prior_messages:
-            greeting = "Welcome back. Ready to continue?"
+        if prior_messages:
+            greeting = "Welcome back! Ready to continue our Spanish lesson?"
         else:
-            greeting = "Hi. We'll learn Spanish step by step. Ready?"
+            greeting = "Hi there! I'm your Spanish tutor. We'll learn Spanish step by step, and have lots of fun along the way. Ready to begin?"
             
         print(f"[Pipeline] Enqueueing greeting turn: '{greeting}'")
         # Save greeting turn manually to MongoDB since it bypasses the LLM generator
@@ -660,7 +535,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
             if interrupted:
                 print(f"[Pipeline] Tutor was interrupted. Skipping database log writing for: {message.content}")
             else:
-                clean_content = strip_lesson_item_tags(message.content)
+                clean_content = message.content.strip()
                 print(f"[Pipeline] Intercepted agent turn: {clean_content}")
                 await write_turn(session_id, "agent", clean_content)
             try:
