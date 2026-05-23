@@ -131,6 +131,7 @@ from agent.utils.text import split_tts_phrases
 
 # ── Main Runner ───────────────────────────────────────────────────────────────
 async def run_agent(session_id: str, scenario_system_prompt: str):
+    print(f"[Startup] LATENCY_TRACE={os.environ.get('LATENCY_TRACE', '0')}")
     # Load turn history (empty list if new session, last 10 turns if resumed)
     prior_messages = load_prior_context(session_id)
 

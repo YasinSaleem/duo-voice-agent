@@ -6,6 +6,37 @@ import fs from 'fs';
 import { redis } from './redis';
 import 'dotenv/config';
 
+const MAX_WEAK_GRAMMAR = 2;
+const MAX_VOCAB = 5;
+
+function formatLessonState(lessonState: {
+  introduced_items?: string[] | null;
+  last_item?: string | null;
+  pause_at?: string | null;
+  interrupted_turn_text?: string | null;
+}): string {
+  const tokens: string[] = [];
+
+  if (lessonState.introduced_items && lessonState.introduced_items.length > 0) {
+    tokens.push(`introduced=${lessonState.introduced_items.join('|')}`);
+  }
+  if (lessonState.last_item) {
+    tokens.push(`last=${lessonState.last_item}`);
+  }
+  if (lessonState.pause_at) {
+    tokens.push(`pause_at=${lessonState.pause_at}`);
+  }
+  if (lessonState.interrupted_turn_text) {
+    tokens.push(`interrupted=${lessonState.interrupted_turn_text}`);
+  }
+
+  if (tokens.length === 0) {
+    return '';
+  }
+
+  return `\n\n[LESSON_STATE]\n${tokens.join('; ')}`;
+}
+
 const apiKey = process.env.LIVEKIT_API_KEY;
 const apiSecret = process.env.LIVEKIT_API_SECRET;
 
@@ -132,8 +163,7 @@ export async function spawnAgent(session_id: string): Promise<boolean> {
         .single();
 
       if (lessonState) {
-        const serialized = JSON.stringify(lessonState);
-        lessonStateInstruction = `\n\n[LESSON_STATE]\n${serialized}`;
+        lessonStateInstruction = formatLessonState(lessonState);
       }
     } catch (stateErr) {
       console.warn(`[Agent Spawn] Failed to load lesson state for session ${session_id}:`, stateErr);
@@ -167,11 +197,15 @@ export async function spawnAgent(session_id: string): Promise<boolean> {
         }
       });
 
+      const weakGrammarList = Array.from(weakGrammar).slice(0, MAX_WEAK_GRAMMAR);
+      const vocabList = Array.from(wordsPracticed).slice(0, MAX_VOCAB);
+      const teachingNote = topTips.find((tip) => tip.trim().length > 0) || 'Reinforce weak areas with short guided practice.';
+
       memoryInstruction = `\n\n[LEARNER PERSONALIZATION PROFILE]
-- Weak Grammar Areas to Target: ${Array.from(weakGrammar).join(', ') || 'None flagged'}
-- Vocabulary Previously Practiced: ${Array.from(wordsPracticed).slice(0, 10).join(', ')}
-- Pedagogical Recommendations: ${topTips.slice(0, 3).join('; ')}
-- Personalization Guideline: Gently weave in previously practiced vocabulary and test them on their weak grammar topics. Maintain the scenario setting.`;
+    - Weak Grammar Focus: ${weakGrammarList.length > 0 ? weakGrammarList.join(', ') : 'None flagged'}
+    - Known Vocabulary: ${vocabList.length > 0 ? vocabList.join(', ') : 'None'}
+    - Teaching Note: ${teachingNote}
+    - Guideline: Use weak grammar + known vocab within the scenario.`;
     }
 
     const finalSystemPrompt = `${scenario.system_prompt}${lessonStateInstruction}${memoryInstruction}`;
