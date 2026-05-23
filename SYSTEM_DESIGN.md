@@ -1,71 +1,114 @@
 # Duo Voice Agent: System Design & Architecture
 
-This document outlines the architectural decisions, trade-offs, latency benchmarks, cost considerations, and future roadmaps for the Duo Voice Agent project.
+This document outlines the architecture, trade-offs, latency measurements, costs, roadmap, and current limitations based on the live codebase and the latest evaluation outputs.
 
 ## 🏗️ Architecture
 
-The system is built as a distributed, event-driven architecture designed to decouple real-time voice streaming from expensive/slow background tasks (like grammar evaluation and memory compilation).
+The system is a distributed, event-driven stack that separates the real-time voice loop from slower, compute-heavy analysis.
 
-- **Real-Time Voice Pipeline (Pipecat + LiveKit):** 
-  When a user joins a room, a webhook triggers a detached `pipeline.py` process. This Pipecat pipeline streams audio via **LiveKit WebRTC**. It uses **Deepgram STT** for speech recognition, **Groq (Llama-3.1-8b-instant)** for ultra-fast conversational text generation, and **Deepgram TTS** (Aura) for speech synthesis.
-  
-- **Asynchronous Workers (Upstash Redis + Python Daemons):**
-  - **Grammar Worker (`grammar_worker.py`):** Listens to a `grammar_jobs` queue on Upstash Redis. It uses **Groq (Qwen-32B-instruct)** to deeply analyze each user turn for spoken grammar mistakes and writes corrections to **MongoDB Atlas**.
-  - **Memory Worker (`memory_worker.py`):** Listens to a `memory_jobs` queue. Upon session completion, it pulls the full transcript from MongoDB and uses Llama-3.1-8b to compress the session into structured pedagogical memory, saved to **Supabase**.
+- **API + Orchestration (Node/Express + LiveKit):**
+  - `api/src/index.ts` serves the UI and exposes session/auth routes.
+  - `api/src/routes/livekit.ts` receives LiveKit webhooks and triggers `spawnAgent(session_id)`.
+  - `api/src/services/livekit.ts` spawns the agent as a detached Python process (`python -m agent.voice_agent`) and injects the assembled system prompt (scenario + lesson state + recent memories).
 
-- **State & Storage:**
-  - **Supabase (PostgreSQL):** Stores users, session metadata, and long-term generated memories.
-  - **MongoDB Atlas:** Stores the high-throughput, unstructured conversation turns and real-time grammar corrections.
+- **Real-Time Voice Pipeline (Pipecat + LiveKit):**
+  - `agent/voice_agent.py` builds a Pipecat pipeline: LiveKit transport → Deepgram STT (Nova-3 general, multi-language) → user turn buffer → Groq LLM (llama-3.1-8b-instant) → clause chunker → tutor text streamer → Deepgram TTS (aura-2-sirio-es) → LiveKit output.
+  - `ClauseBoundaryTextChunker` flushes phrase-sized text frames at punctuation to reduce perceived latency without token-by-token TTS.
+  - `UserTurnBufferProcessor` merges nearby transcription chunks into a single user turn, persists to MongoDB, and enqueues a grammar job.
+
+- **Async Workers (Python daemons + Upstash Redis):**
+  - Grammar worker (`agent/workers/grammar_worker.py`) pulls from `grammar_jobs` and uses Groq Qwen3-32B to produce `{error, correction, explanation}` stored in MongoDB.
+  - Memory worker (`agent/workers/memory_worker.py`) pulls from `memory_jobs`, summarizes full transcripts with Groq llama-3.1-8b-instant, and writes structured memories to Supabase.
+
+- **Storage:**
+  - MongoDB: high-throughput turn storage and grammar corrections.
+  - Supabase (Postgres): user accounts, session metadata, lesson state checkpoints, and long-term memories.
+  - Upstash Redis (REST): async job queues (`grammar_jobs`, `memory_jobs`) and resume cache.
 
 ## ⚖️ Trade-offs
 
-1. **Async Polling vs. True Pub/Sub:** The background workers currently use a continuous polling loop (`LPOP` with an `asyncio.sleep`) against an Upstash Redis REST API. 
-   *Trade-off:* This is easy to deploy on serverless/local environments without persistent TCP connections, but it introduces a slight polling delay (up to 1 second) and isn't as instantly reactive as a true WebSocket or persistent Redis `BLPOP`.
-2. **Synchronous SDKs in Asyncio:** The background workers use synchronous SDK calls (like Supabase `.execute()` and standard Groq completions) inside an `asyncio` loop. 
-   *Trade-off:* This works perfectly for a single-worker background daemon (MVP) but would bottleneck if horizontally scaled behind a single process without a process pool or thread pool redesign.
-3. **Detached Subprocesses vs. Kubernetes Pods:** The Node.js API spawns the Pipecat agent as a detached Python subprocess. 
-   *Trade-off:* Great for local development and single-VM deployments, but not scalable across a cluster out of the box.
+1. **Detached agent subprocess vs. container/job orchestration**
+   - The API spawns a local `python -m agent.voice_agent` subprocess. This is simple to deploy on a single VM but not horizontally scalable or isolated.
+
+2. **Polling Redis REST vs. blocking queues**
+   - Workers poll Upstash via `LPOP` with sleeps (1s grammar, 2s memory). This avoids persistent sockets but adds queue latency and wastes idle cycles.
+
+3. **Sync SDK calls inside asyncio loops**
+   - Workers use synchronous Groq and Supabase calls in async loops. This is fine for single-worker MVP but blocks concurrency under load.
+
+4. **Streaming behavior depends on provider chunking**
+   - Groq streaming can be fast but still appear “buffered or burst” at small timescales for short completions (see measurements below).
 
 ## ⚡ Latency Measurements
 
-Based on the latency verification test files (`verify_groq_streaming.py` and Pipecat tracing):
+Measurements taken from the evaluation scripts on 2026-05-23:
 
-- **LLM Time-To-First-Token (TTFT):** `~300ms`
-  - *Groq Llama-3.1-8b-instant* consistently hits the first token around 300ms.
-- **LLM Completion Time:** `~430ms`
-  - The model streams chunks extremely fast, completing a typical 50-chunk response in roughly 130ms after the first token.
-- **Pipeline E2E Latency:** 
-  - Using clause-boundary chunking (`ClauseBoundaryTextChunker`), the Pipecat pipeline sends phrases to Deepgram TTS as soon as a comma or period is generated.
-  - Deepgram TTS adds approximately `300-500ms` of processing.
-  - **Total Conversational Latency (User stops speaking -> Agent starts speaking):** Consistently `under 1.0 second` (typically ~800ms), creating a highly fluid, natural voice conversation.
+- **Groq LLM streaming (`agent/experiments/verify_groq_streaming.py`)**
+  - TTFT: **0.214s**
+  - Total completion time: **0.295s**
+  - Verdict: **buffered_or_burst** (chunks clustered near completion)
+
+- **Pipecat full pipeline trace (`agent/experiments/trace_pipecat_streaming.py`)**
+  - First LLM token: **+1.762s**
+  - First TTS input: **+1.764s**
+  - First audio frame: **+2.141s**
+  - LLM-to-audio gap in this run: **~0.379s**
+
+- **Deepgram TTS streaming (`agent/experiments/verify_deepgram_tts_streaming.py`)**
+  - First audio chunk: **+1.352s**
+  - Large, continuous stream of audio chunks observed after first chunk (hundreds of frames).
+
+Notes:
+- The isolated Deepgram TTS test includes websocket connection setup in its timing, which contributed ~1.0s of cold-start before audio streaming.
 
 ## 🧪 Testing & Evaluation
 
-Testing real-time WebRTC audio pipelines can be slow and flaky. To ensure the reliability of the conversational "brain" and its strict adherence to pedagogical rules, the system employs a decoupled regression testing harness (`agent/eval_tutor.py`).
+- **LLM regression harness:** `agent/evaluation/eval_tutor.py`
+  - Validates tutor brevity, English fallback behavior, and grammar prompt robustness.
 
-- **Isolated Prompt Testing:** The harness imports the exact `GLOBAL_TUTOR_POLICY` and `GRAMMAR_SYSTEM_PROMPT` used in production.
-- **Assertion-Based Edge Cases:** It uses deterministic assertions against the LLM's raw text generation to test edge cases, such as:
-  - Verifying the agent emits hidden `<lesson_item>` metadata tags.
-  - Ensuring the agent falls back to English when confused (rather than hallucinating in Spanish).
-  - Validating that the grammar worker successfully ignores STT transcription artifacts (like accent marks).
+- **Pipeline/infra verification:**
+  - `agent/experiments/verify_pipeline.py` exercises LiveKit token minting, MongoDB writes, and Redis enqueue semantics.
+  - `agent/experiments/verify_grammar.py` validates grammar worker output schema and DB updates.
+
+- **Streaming/latency checks:**
+  - `agent/experiments/verify_groq_streaming.py`
+  - `agent/experiments/trace_pipecat_streaming.py`
+  - `agent/experiments/verify_deepgram_tts_streaming.py`
 
 ## 💰 Costs
 
-The stack was chosen to heavily optimize for both low latency and low cost:
-- **Groq:** Extremely low cost per 1M tokens, with generous free tiers for `llama-3.1-8b` and `qwen-32b`.
-- **Deepgram:** Industry-leading pricing for STT (Nova-2/Nova-3) and TTS (Aura), costing fractions of a cent per minute.
-- **Upstash Redis / Supabase / MongoDB Atlas:** All offer robust Serverless/Free tiers that easily support development and small-scale production without fixed overhead.
-- **LiveKit Cloud:** Free tier provides ample bandwidth for WebRTC streaming before switching to a predictable pay-as-you-go model.
+- **Groq:** low-cost, high-throughput inference for llama-3.1-8b-instant and Qwen3-32B (grammar).
+- **Deepgram:** STT (Nova-3) + TTS (Aura) billed per minute; websocket usage keeps latency low but has a cold-start cost.
+- **Upstash Redis / Supabase / MongoDB Atlas:** serverless pricing tiers suitable for early-stage usage and low idle cost.
+- **LiveKit Cloud:** pay-as-you-go bandwidth/egress; predictable scaling for WebRTC sessions.
 
-## 🚀 What I'd Build Next
+## 🚀 What I’d Build Next
 
-1. **Containerized Agent Fleet (Kubernetes / Docker):** Replace the detached subprocess spawning with a proper job queue (e.g., temporal.io or Kubernetes Jobs) to spin up isolated, scalable Pipecat agents.
-2. **WebSockets for Workers:** Upgrade the Upstash REST polling to persistent Redis connections (`BLPOP`) to eliminate the 1-second polling latency on grammar checks.
-3. **Frontend Dashboard:** Build a Next.js frontend where users can review their generated session memories, grammar corrections, and track their Spanish fluency progression over time.
-4. **RAG for Context:** Inject the user's historical `grammar_insights` into the Pipecat agent's system prompt dynamically, so the agent remembers what the user struggled with last week.
+1. **Replace subprocess spawning with a job-based agent fleet**
+   - Use a queue + worker pool (Kubernetes Jobs, ECS, or Temporal) to scale agents safely and collect structured telemetry.
+
+2. **Switch Redis polling to blocking or streaming queues**
+   - Move from REST polling to BLPOP or a streaming queue (Redis Streams / SQS) to reduce grammar/memory delays.
+
+3. **Add dedicated observability**
+   - Structured logs, OpenTelemetry traces, and per-stage latency metrics (STT → LLM → TTS).
+
+4. **Improve personalization fidelity**
+   - Feed more than 3 historical memories and add session-level retrieval to avoid prompt truncation.
 
 ## ⚠️ Known Limitations
 
-- **Speech-to-Text Formatting:** Deepgram STT provides punctuation and accent marks which the user didn't explicitly "say" (e.g., `à` vs `á`). The grammar worker is instructed to ignore these, but heavy transcription errors can still occasionally mislead the grammar evaluator.
-- **Simultaneous Speaking:** While Pipecat supports interruptions (VAD), extreme cross-talk can sometimes clip the agent's context or result in truncated MongoDB turn logging.
-- **Polling Rate Limits:** The background workers poll Upstash via HTTP REST. Heavy traffic could hit Upstash REST rate limits unless upgraded to a persistent Redis client.
+- **Groq streaming can be “burst-like” for short outputs**
+  - The current run showed buffered/burst chunking despite a fast TTFT, which can reduce perceived incremental streaming.
+
+- **TTS cold-start latency**
+  - The first Deepgram websocket connection adds ~1.0s before audio frames are observed in isolated tests.
+
+- **Polling delays and rate limits**
+  - Upstash REST polling introduces up to 1–2s of idle delay and can hit API limits under load.
+
+- **Single-process worker throughput**
+  - Grammar and memory workers are single-process, synchronous SDKs inside async loops; they will bottleneck without a worker pool.
+
+- **Context truncation on resume**
+  - Resume only caches the last 10 turns and last 3 memories, which can omit older context in long-running learners.

@@ -4,6 +4,7 @@ import os
 import json
 import sys
 import re
+import time
 from datetime import datetime, timezone
 
 
@@ -37,6 +38,52 @@ from agent.prompts.tutor_policy import GLOBAL_TUTOR_POLICY
 from agent.processors.text_chunker import ClauseBoundaryTextChunker
 from agent.processors.speech_streamer import TutorSpeechStreamer
 from agent.processors.turn_buffer import UserTurnBufferProcessor
+
+class TranscriptionTimingLogger(FrameProcessor):
+    def __init__(self):
+        super().__init__()
+        self._enabled = os.environ.get("LATENCY_TRACE", "0") == "1"
+        self._first_interim_ts: float | None = None
+        self._first_final_ts: float | None = None
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if not self._enabled:
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, TranscriptionFrame):
+            now = time.perf_counter()
+            if self._first_interim_ts is None:
+                self._first_interim_ts = now
+                print(f"[Latency] first_transcription_frame at +{now:.3f}s | finalized={frame.finalized}")
+            if frame.finalized and self._first_final_ts is None:
+                self._first_final_ts = now
+                print(f"[Latency] first_final_transcript at +{now:.3f}s")
+            print(f"[Latency] transcript_frame at +{now:.3f}s | finalized={frame.finalized} | text='{frame.text}'")
+
+        await self.push_frame(frame, direction)
+
+
+class LLMFirstTokenLogger(FrameProcessor):
+    def __init__(self):
+        super().__init__()
+        self._enabled = os.environ.get("LATENCY_TRACE", "0") == "1"
+        self._first_token_ts: float | None = None
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if not self._enabled:
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, TextFrame):
+            now = time.perf_counter()
+            if self._first_token_ts is None:
+                self._first_token_ts = now
+                print(f"[Latency] first_llm_token at +{now:.3f}s")
+
+        await self.push_frame(frame, direction)
 
 def build_system_prompt(scenario_system_prompt: str) -> str:
     return f"{GLOBAL_TUTOR_POLICY.strip()}\n\nScenario instructions:\n{scenario_system_prompt.strip()}"
@@ -130,14 +177,18 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     # 8b. Clause chunker + tutor text streamer for UI captions
     clause_chunker = ClauseBoundaryTextChunker()
     tutor_speech_streamer = TutorSpeechStreamer(transport, session_id)
+    transcription_logger = TranscriptionTimingLogger()
+    llm_token_logger = LLMFirstTokenLogger()
 
     # 9. Pipecat Pipeline Assembly
     pipeline = Pipeline([
         transport.input(),
         stt,
+        transcription_logger,
         user_turn_processor,         # Downstream of stt
         user_aggregator,             # Pre-instantiated user aggregator
         llm,
+        llm_token_logger,
         clause_chunker,              # Flush TTS-sized phrases at punctuation boundaries
         tutor_speech_streamer,       # Stream text chunks in real-time
         tts,
