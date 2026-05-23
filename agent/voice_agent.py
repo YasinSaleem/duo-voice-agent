@@ -11,9 +11,13 @@ from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.tts_service import TextAggregationMode
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
+from pipecat.turns.user_start import TranscriptionUserTurnStartStrategy
+from pipecat.turns.user_stop import ExternalUserTurnStopStrategy
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineTask, PipelineParams
@@ -109,17 +113,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     except Exception as e:
         print(f"[Pipeline] Failed to store agent pid: {e}")
 
-    # 1. Silero Voice Activity Detector
-    vad = SileroVADAnalyzer(
-        params=VADParams(
-            start_secs=0.20,
-            stop_secs=0.50,
-            confidence=0.75,
-            min_volume=0.6,
-        )
-    )
-
-    # 2. LiveKit WebRTC Transport
+    # 1. LiveKit WebRTC Transport
     transport = LiveKitTransport(
         url=os.environ["LIVEKIT_URL"],
         token=_mint_agent_token(session_id),
@@ -127,8 +121,6 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         params=LiveKitParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_enabled=True,
-            vad_analyzer=vad
         )
     )
 
@@ -138,7 +130,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         settings=DeepgramSTTService.Settings(
             language="multi",
             model="nova-3-general",
-            endpointing="300",
+            endpointing="200",
             smart_format=True,
         )
     )
@@ -156,7 +148,15 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     messages.extend(prior_messages)
 
     context = LLMContext(messages)
-    context_aggregator = LLMContextAggregatorPair(context)
+    context_aggregator = LLMContextAggregatorPair(
+        context,
+        user_params=LLMUserAggregatorParams(
+            user_turn_strategies=UserTurnStrategies(
+                start=[TranscriptionUserTurnStartStrategy()],
+                stop=[ExternalUserTurnStopStrategy(timeout=0.05)],
+            ),
+        ),
+    )
 
     # 6. Groq LLM Service (Spanish language tutor model)
     llm = TimedGroqLLMService(

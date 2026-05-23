@@ -57,14 +57,19 @@ def split_tts_phrases(text: str) -> list[str]:
     return phrases
 
 def utterance_flush_delay(text: str) -> float:
+    """
+    Short coalesce window after Deepgram endpointing (see voice_agent STT settings).
+    Deepgram already waits for end-of-speech; this only merges back-to-back finals.
+    """
     normalized = normalize_transcript_spacing(text)
+    if not normalized:
+        return 0.0
     words = normalized.split()
     word_count = len(words)
-    
+
     ends_with_terminal = normalized.endswith(("?", "!"))
     ends_with_period = normalized.endswith(".")
-    
-    # Only treat period as a terminal pause if we have more than 2 words (e.g. avoid splitting "Blanco.")
+
     if ends_with_terminal or (ends_with_period and word_count > 2):
-        return 0.25
-    return 0.75
+        return 0.05
+    return 0.10
