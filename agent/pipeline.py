@@ -1,4 +1,4 @@
-import core.bootstrap
+import agent.core.bootstrap
 import asyncio
 import os
 import json
@@ -31,19 +31,19 @@ from pipecat.frames.frames import (
     TextFrame,
 )
 
-from utils.context import load_prior_context
-from core.db import redis_async_client as redis, write_turn
-from prompts.tutor_policy import GLOBAL_TUTOR_POLICY
-from processors.text_chunker import ClauseBoundaryTextChunker
-from processors.speech_streamer import TutorSpeechStreamer
-from processors.turn_buffer import UserTurnBufferProcessor
+from agent.utils.session_context import load_prior_context
+from agent.core.db import redis_async_client as redis, write_turn
+from agent.prompts.tutor_policy import GLOBAL_TUTOR_POLICY
+from agent.processors.text_chunker import ClauseBoundaryTextChunker
+from agent.processors.speech_streamer import TutorSpeechStreamer
+from agent.processors.turn_buffer import UserTurnBufferProcessor
 
 def build_system_prompt(scenario_system_prompt: str) -> str:
     return f"{GLOBAL_TUTOR_POLICY.strip()}\n\nScenario instructions:\n{scenario_system_prompt.strip()}"
 
 # ── Helper Functions ───────────────────────────────────────────────────────────
 
-from utils.text import split_tts_phrases
+from agent.utils.text import split_tts_phrases
 
 # ── Main Runner ───────────────────────────────────────────────────────────────
 async def run_agent(session_id: str, scenario_system_prompt: str):
@@ -119,7 +119,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     assistant_aggregator = context_aggregator.assistant()
 
     # 8. Custom User Turn Interceptor
-    from core.db import enqueue_grammar_job
+    from agent.core.db import enqueue_grammar_job
     user_turn_processor = UserTurnBufferProcessor(
         session_id=session_id,
         transport=transport,

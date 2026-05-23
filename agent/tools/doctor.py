@@ -1,4 +1,4 @@
-import core.bootstrap
+import agent.core.bootstrap
 import os
 import sys
 import re

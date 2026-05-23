@@ -1,4 +1,4 @@
-import core.bootstrap
+import agent.core.bootstrap
 import asyncio
 import json
 import os
@@ -7,12 +7,12 @@ import re
 
 from groq import Groq
 from bson import ObjectId
-from core.db import turns_col, redis_client as redis
+from agent.core.db import turns_col, redis_client as redis
 
 groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
 # ── Grammar Evaluation Specifications ─────────────────────────────────────────
-from prompts.grammar_policy import GRAMMAR_SYSTEM_PROMPT
+from agent.prompts.grammar_policy import GRAMMAR_SYSTEM_PROMPT
 
 LOW_SIGNAL_RE = re.compile(r"^[\W_]+$")
 HELP_REQUEST_RE = re.compile(

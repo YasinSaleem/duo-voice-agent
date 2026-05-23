@@ -3,14 +3,7 @@ import sys
 import asyncio
 from bson import ObjectId
 
-# Add parent directory to sys.path to enable imports from agent/
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Load environment variables
-from dotenv import load_dotenv
-load_dotenv()
-
-from grammar_worker import process_job, turns_col, redis
+from agent.workers.grammar_worker import process_job, turns_col, redis
 
 async def test_grammar_worker_integration():
     print("[verify_grammar] Starting grammar worker integration and AI checks...")

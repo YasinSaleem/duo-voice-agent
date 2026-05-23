@@ -1,10 +1,10 @@
-import core.bootstrap
+import agent.core.bootstrap
 import asyncio
 import json
 import os
 
 from groq import Groq
-from core.db import turns_col, redis_client as redis, supabase
+from agent.core.db import turns_col, redis_client as redis, supabase
 
 # ------------------------------------------------------------------------------
 # Single-Worker Low-Throughput Background Processor Wording:
@@ -19,7 +19,7 @@ from core.db import turns_col, redis_client as redis, supabase
 # Initialize Services
 groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
-from prompts.memory_policy import MEMORY_SYSTEM_PROMPT
+from agent.prompts.memory_policy import MEMORY_SYSTEM_PROMPT
 
 async def fetch_scenario_title(session_id: str) -> str:
     """Deterministic scenario title lookup using official supabase-py client."""

@@ -4,10 +4,8 @@ import json
 from dotenv import load_dotenv
 from groq import Groq
 
-# Ensure we can import from the agent directory
-sys.path.append(os.path.dirname(__file__))
-from pipeline import build_system_prompt
-from prompts.grammar_policy import GRAMMAR_SYSTEM_PROMPT
+from agent.pipeline import build_system_prompt
+from agent.prompts.grammar_policy import GRAMMAR_SYSTEM_PROMPT
 
 load_dotenv()
 

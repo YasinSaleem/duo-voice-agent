@@ -2,7 +2,7 @@ import asyncio
 import json
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from pipecat.frames.frames import Frame, EndFrame, TranscriptionFrame
-from utils.text import normalize_transcript_spacing, utterance_flush_delay
+from agent.utils.text import normalize_transcript_spacing, utterance_flush_delay
 
 class UserTurnBufferProcessor(FrameProcessor):
     """

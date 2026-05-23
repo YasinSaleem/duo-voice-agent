@@ -3,14 +3,9 @@ import sys
 import asyncio
 from bson import ObjectId
 
-# Add parent directory to sys.path to enable imports from agent/
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Load environment variables
-from dotenv import load_dotenv
-load_dotenv()
-
-from pipeline import _mint_agent_token, write_turn, enqueue_grammar_job, UserTurnProcessor, redis, turns_col
+from agent.pipeline import _mint_agent_token
+from agent.core.db import write_turn, enqueue_grammar_job, redis_async_client as redis, turns_col
+from agent.processors.turn_buffer import UserTurnBufferProcessor
 
 async def test_pipeline_integration():
     print("[verify_pipeline] Starting pipeline integration and DB tests...")
@@ -42,12 +37,10 @@ async def test_pipeline_integration():
     assert doc["corrections"] is None
     print("[verify_pipeline] MongoDB document values validated successfully.")
     
-    # 3. Test Redis Queueing
-    print("[verify_pipeline] Testing Redis queueing...")
-    enqueue_grammar_job(session_id, turn_id)
+    await enqueue_grammar_job(session_id, turn_id)
     
     # Pop the item back from Redis to verify FIFO queue pop and matching payload
-    result = redis.lpop("grammar_jobs")
+    result = await redis.lpop("grammar_jobs")
     assert result is not None, "Expected enqueued job in Redis"
     print(f"[verify_pipeline] Popped job payload from Redis: {result}")
     
@@ -66,10 +59,10 @@ async def test_pipeline_integration():
     print("[verify_pipeline] MongoDB database cleaned up successfully.")
     
     # 5. Verify FrameProcessor Instantiation
-    print("[verify_pipeline] Testing UserTurnProcessor instantiation...")
-    processor = UserTurnProcessor(session_id)
+    print("[verify_pipeline] Testing UserTurnBufferProcessor instantiation...")
+    processor = UserTurnBufferProcessor(session_id, transport=None)
     assert processor is not None
-    print("[verify_pipeline] UserTurnProcessor instantiated cleanly.")
+    print("[verify_pipeline] UserTurnBufferProcessor instantiated cleanly.")
     
     print("\n[verify_pipeline] === SUCCESS: Pipeline Integration verified successfully! ===\n")
 

@@ -1,7 +1,7 @@
 import json
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from pipecat.frames.frames import Frame, TextFrame
-from core.db import redis_async_client as redis
+from agent.core.db import redis_async_client as redis
 
 class TutorSpeechStreamer(FrameProcessor):
     """

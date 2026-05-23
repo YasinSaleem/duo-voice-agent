@@ -1,6 +1,6 @@
-import core.bootstrap
+import agent.core.bootstrap
 import json
-from core.db import redis_client as redis
+from agent.core.db import redis_client as redis
 
 def load_prior_context(session_id: str) -> list[dict]:
     """

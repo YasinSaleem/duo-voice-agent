@@ -5,7 +5,7 @@ from pipecat.frames.frames import (
     LLMFullResponseEndFrame,
     TextFrame,
 )
-from utils.text import drain_clause_boundary_phrases
+from agent.utils.text import drain_clause_boundary_phrases
 
 class ClauseBoundaryTextChunker(FrameProcessor):
     """
