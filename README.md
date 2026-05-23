@@ -2,6 +2,8 @@
 
 Real-time conversational Spanish tutor powered by LiveKit WebRTC, Pipecat, Groq, Deepgram, MongoDB, Supabase, and Upstash Redis. The system streams low-latency voice conversations and runs asynchronous grammar and memory jobs in the background.
 
+<img width="1600" height="898" alt="image" src="https://github.com/user-attachments/assets/8c583907-68df-40f1-82f4-dcbbf9451cf9" />
+
 ## Key Components
 
 - **API (Node/Express):** session/auth routes, LiveKit webhook handler, static UI hosting.
