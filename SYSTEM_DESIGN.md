@@ -1,6 +1,6 @@
 # Duo Voice Agent: System Design & Architecture
 
-This document outlines the architecture, trade-offs, latency measurements, costs, roadmap, and current limitations based on the live codebase and the latest evaluation outputs.
+This document outlines the architecture, trade-offs, latency measurements, costs, roadmap, and current limitations based on the live codebase, production session instrumentation (`agent/latency_runtime.log`), and isolated lab benchmarks.
 
 ## 🏗️ Architecture
 
@@ -41,25 +41,89 @@ The system is a distributed, event-driven stack that separates the real-time voi
 
 ## ⚡ Latency Measurements
 
-Measurements taken from the evaluation scripts on 2026-05-23:
+### Production configuration (live sessions)
+
+Instrumented via hardcoded pipeline logging to `agent/latency_runtime.log` (JSON lines, always on).
+
+| Component | Value |
+| --- | --- |
+| LLM | Groq `llama-3.1-8b-instant` |
+| STT | Deepgram `nova-3-general` (multi) |
+| TTS | Deepgram `aura-2-sirio-es` |
+| Max completion tokens | 120 |
+| System prompt (typical) | ~370 words / ~2472 chars |
+
+### End-to-end response latency (production)
+
+**Definition:** user starts speaking → assistant starts speaking (first TTS audio frame).
+
+Known pause-induced interruption outlier excluded from percentile calculations.
+
+| Metric | Value |
+| --- | --- |
+| **p50** | ~**1.9–2.0 s** |
+| **p95** | ~**2.05–2.1 s** |
+
+**Interpretation:** latency is fairly stable. Most responses land near **2 seconds**; worst normal cases are just above **2 seconds**. No large jitter in the normal response path.
+
+### Interruption / barge-in (production)
+
+**Definition:** user interrupts bot while bot is speaking → bot stops speaking.
+
+Pause artifact outlier ignored (one long false-positive during user silence).
+
+| Sample latencies | ~0.53 s, ~0.57 s, ~0.67 s, ~1.70 s |
+| --- | --- |
+| **p50** | ~**0.7–0.9 s** |
+| **p95** | ~**1.6–3.3 s** (varies by snapshot) |
+
+**Interpretation:** barge-in works. Typical stop time is **~700–900 ms**. Occasional slower cases at **1.5–1.7 s** — usable, but target for premium UX is **under 500 ms**.
+
+### TTS streaming behavior (production)
+
+- Observed streaming chunk duration: **~80 ms (0.08 s)** per frame, repeatedly.
+- TTS is **not** the dominant bottleneck; small chunks support early playback.
+
+### Instrumentation caveats
+
+- Logs can emit many `tts_audio`-driven pseudo-turns (e.g. turn 643, 644, 645…). This reflects **logging turn boundaries**, not conversational turns.
+- Raw turn counts from the log are misleading; percentiles should be computed from `turn_latency_breakdown` / `end_to_end_voice_latency` events, not turn IDs.
+
+Per-turn breakdown fields in `turn_latency_breakdown` include: `mic_to_stt_interim`, `stop_to_merged_user`, `merged_to_inference`, `groq_to_first_token`, `first_token_to_tts_request`, `tts_request_to_audio`, and `end_to_end_voice_latency`.
+
+### Overall assessment (production)
+
+| Area | Score | Notes |
+| --- | --- | --- |
+| Response speed | **7/10** | ~2 s median; stable but not “premium real-time” |
+| Interruption responsiveness | **6.5–7/10** | Works; p50 ~0.7–0.9 s |
+| Latency consistency | **8/10** | Tight p50–p95 band on normal responses |
+| TTS responsiveness | **8.5/10** | Small streaming chunks, low perceived stall |
+
+**Working well:** stable overall latency, streaming TTS, functional barge-in, no severe normal response spikes.
+
+**Could improve:** shave end-to-end from ~2 s toward sub-1.5 s; tighten interruption p95 and target under 500 ms typical stop time; fix pseudo-turn noise in latency aggregation.
+
+**Bottom line:** reasonably responsive for a tutoring MVP, but not yet premium conversational real-time.
+
+### Lab / isolated benchmarks (2026-05-23)
+
+Component-level scripts (not full LiveKit sessions):
 
 - **Groq LLM streaming (`agent/experiments/verify_groq_streaming.py`)**
-  - TTFT: **0.214s**
-  - Total completion time: **0.295s**
+  - TTFT: **0.214 s**
+  - Total completion: **0.295 s**
   - Verdict: **buffered_or_burst** (chunks clustered near completion)
 
-- **Pipecat full pipeline trace (`agent/experiments/trace_pipecat_streaming.py`)**
-  - First LLM token: **+1.762s**
-  - First TTS input: **+1.764s**
-  - First audio frame: **+2.141s**
-  - LLM-to-audio gap in this run: **~0.379s**
+- **Pipecat pipeline trace (`agent/experiments/trace_pipecat_streaming.py`)**
+  - First LLM token: **+1.762 s**
+  - First TTS input: **+1.764 s**
+  - First audio frame: **+2.141 s**
+  - LLM → first audio gap: **~0.379 s**
 
 - **Deepgram TTS streaming (`agent/experiments/verify_deepgram_tts_streaming.py`)**
-  - First audio chunk: **+1.352s**
-  - Large, continuous stream of audio chunks observed after first chunk (hundreds of frames).
-
-Notes:
-- The isolated Deepgram TTS test includes websocket connection setup in its timing, which contributed ~1.0s of cold-start before audio streaming.
+  - First audio chunk: **+1.352 s** (includes ~1.0 s websocket cold-start in isolated test)
+  - Continuous chunk stream after first frame
 
 ## 🧪 Testing & Evaluation
 
@@ -90,8 +154,8 @@ Notes:
 2. **Switch Redis polling to blocking or streaming queues**
    - Move from REST polling to BLPOP or a streaming queue (Redis Streams / SQS) to reduce grammar/memory delays.
 
-3. **Add dedicated observability**
-   - Structured logs, OpenTelemetry traces, and per-stage latency metrics (STT → LLM → TTS).
+3. **Extend observability beyond `latency_runtime.log`**
+   - Per-stage metrics are logged locally today; add aggregation dashboards, OpenTelemetry traces, and fix pseudo-turn grouping so turn IDs match conversational turns.
 
 4. **Improve personalization fidelity**
    - Feed more than 3 historical memories and add session-level retrieval to avoid prompt truncation.
@@ -112,3 +176,9 @@ Notes:
 
 - **Context truncation on resume**
   - Resume only caches the last 10 turns and last 3 memories, which can omit older context in long-running learners.
+
+- **Latency log turn IDs vs. conversation turns**
+  - `agent/latency_runtime.log` may increment turn IDs on TTS audio frames; use `turn_latency_breakdown` events for accurate per-utterance stats.
+
+- **End-to-end latency budget**
+  - Production median response time is ~2 s; interruption p50 ~0.7–0.9 s with occasional 1.5+ s tails.
