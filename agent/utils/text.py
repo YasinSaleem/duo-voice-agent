@@ -66,5 +66,5 @@ def utterance_flush_delay(text: str) -> float:
     
     # Only treat period as a terminal pause if we have more than 2 words (e.g. avoid splitting "Blanco.")
     if ends_with_terminal or (ends_with_period and word_count > 2):
-        return 0.60
-    return 2.00
+        return 0.25
+    return 0.75
