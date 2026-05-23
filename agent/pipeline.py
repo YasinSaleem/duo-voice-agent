@@ -32,32 +32,16 @@ from pipecat.frames.frames import (
 )
 
 from context_loader import load_prior_context
-from core.db import turns_col, redis_async_client as redis
+from core.db import turns_col, redis_async_client as redis, write_turn
 from prompts.tutor_policy import GLOBAL_TUTOR_POLICY
+from processors.text_chunker import ClauseBoundaryTextChunker
+from processors.speech_streamer import TutorSpeechStreamer
+from processors.turn_buffer import UserTurnBufferProcessor
 
 def build_system_prompt(scenario_system_prompt: str) -> str:
     return f"{GLOBAL_TUTOR_POLICY.strip()}\n\nScenario instructions:\n{scenario_system_prompt.strip()}"
 
 # ── Helper Functions ───────────────────────────────────────────────────────────
-async def write_turn(session_id: str, role: str, transcript: str) -> str:
-    """Persist conversation turn in MongoDB. Returns the inserted turn document ID."""
-    doc = {
-        "session_id": session_id,
-        "timestamp": datetime.now(timezone.utc),
-        "role": role,
-        "transcript": transcript,
-        "corrections": None  # Filled asynchronously by grammar_worker
-    }
-    result = await turns_col.insert_one(doc)
-    turn_id = str(result.inserted_id)
-    print(f"[Pipeline] Turn persisted to MongoDB: {role} -> ID: {turn_id}")
-    return turn_id
-
-async def enqueue_grammar_job(session_id: str, turn_id: str):
-    """Enqueues user turn for asynchronous grammar analysis in Redis (FIFO)."""
-    payload = json.dumps({"sessionId": session_id, "turnId": turn_id})
-    await redis.rpush("grammar_jobs", payload)
-    print(f"[Pipeline] Grammar job enqueued for turn {turn_id} (FIFO)")
 
 from utils.text import (
     normalize_transcript_spacing,
@@ -65,200 +49,6 @@ from utils.text import (
     split_tts_phrases,
     utterance_flush_delay
 )
-
-class ClauseBoundaryTextChunker(FrameProcessor):
-    """
-    Buffer streaming LLM text and forward phrase-sized TextFrames at punctuation
-    boundaries (comma, period, question mark, etc.) so TTS/audio can start early
-    without synthesizing every token separately.
-
-    Enhancement: Single-word clause phrases are buffered and grouped with the next phrase
-    to prevent unnatural speech pauses in the TTS pipeline.
-    """
-
-    def __init__(self):
-        super().__init__()
-        self._buffer = ""
-        self._pending_phrase = ""
-
-    def is_single_word(self, text: str) -> bool:
-        stripped = text.strip()
-        if not stripped:
-            return False
-        words = stripped.split()
-        return len(words) <= 1
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-
-        if isinstance(frame, LLMFullResponseStartFrame):
-            self._buffer = ""
-            self._pending_phrase = ""
-            await self.push_frame(frame, direction)
-            return
-
-        if isinstance(frame, TextFrame):
-            self._buffer += frame.text
-            phrases, self._buffer = drain_clause_boundary_phrases(self._buffer)
-            for phrase in phrases:
-                if self._pending_phrase:
-                    combined = self._pending_phrase + " " + phrase
-                    if self.is_single_word(combined):
-                        self._pending_phrase = combined
-                    else:
-                        await self.push_frame(TextFrame(combined), direction)
-                        self._pending_phrase = ""
-                else:
-                    if self.is_single_word(phrase):
-                        self._pending_phrase = phrase
-                    else:
-                        await self.push_frame(TextFrame(phrase), direction)
-            return
-
-        if isinstance(frame, LLMFullResponseEndFrame):
-            # Flush any remaining text from the drain buffer
-            if self._buffer.strip():
-                phrases, remainder = drain_clause_boundary_phrases(self._buffer)
-                if remainder.strip():
-                    phrases.append(remainder.strip())
-                self._buffer = ""
-                
-                for phrase in phrases:
-                    if self._pending_phrase:
-                        combined = self._pending_phrase + " " + phrase
-                        if self.is_single_word(combined):
-                            self._pending_phrase = combined
-                        else:
-                            await self.push_frame(TextFrame(combined), direction)
-                            self._pending_phrase = ""
-                    else:
-                        if self.is_single_word(phrase):
-                            self._pending_phrase = phrase
-                        else:
-                            await self.push_frame(TextFrame(phrase), direction)
-            
-            # Flush any remaining pending phrase
-            if self._pending_phrase.strip():
-                await self.push_frame(TextFrame(self._pending_phrase.strip()), direction)
-                self._pending_phrase = ""
-                
-            await self.push_frame(frame, direction)
-            return
-
-        await self.push_frame(frame, direction)
-
-
-class TutorSpeechStreamer(FrameProcessor):
-    """
-    Frame processor placed between the LLM and TTS to stream tutor text chunks
-    in real-time to the client via the LiveKit data channel.
-    """
-    def __init__(self, transport, session_id: str):
-        super().__init__()
-        self.transport = transport
-        self.session_id = session_id
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, TextFrame):
-            try:
-                await redis.set(f"agent_speaking:{self.session_id}", "1", ex=30)
-                await redis.set(f"agent_speaking_text:{self.session_id}", frame.text, ex=30)
-                payload = json.dumps({"type": "tutor_text_chunk", "text": frame.text})
-                await self.transport.send_message(payload)
-            except Exception as e:
-                print(f"[TutorSpeechStreamer] Error: {e}")
-        await self.push_frame(frame, direction)
-
-# ── Custom User Turn Buffer Processor ────────────────────────────────────────
-class UserTurnBufferProcessor(FrameProcessor):
-    """
-    Buffers nearby final STT chunks into a single utterance before they reach
-    the LLM or grammar queue. This avoids fragmentary turns like "Mi" or
-    "no gusta" being treated as complete user messages.
-    """
-    def __init__(self, session_id: str, transport):
-        super().__init__()
-        self.session_id = session_id
-        self.transport = transport
-        self._buffered_frames: list[TranscriptionFrame] = []
-        self._flush_task: asyncio.Task | None = None
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-
-        if isinstance(frame, TranscriptionFrame):
-            await self._buffer_transcription(frame, direction)
-            return
-
-        if isinstance(frame, EndFrame):
-            await self._flush_buffer(direction)
-
-        await self.push_frame(frame, direction)
-
-    async def _buffer_transcription(self, frame: TranscriptionFrame, direction: FrameDirection):
-        text = normalize_transcript_spacing(frame.text)
-        if not text:
-            return
-
-        print(f"[UserTurnBufferProcessor] Buffering transcript chunk: {text}")
-        buffered_frame = TranscriptionFrame(
-            text=text,
-            user_id=frame.user_id,
-            timestamp=frame.timestamp,
-            language=frame.language,
-            result=frame.result,
-            finalized=frame.finalized,
-        )
-        self._buffered_frames.append(buffered_frame)
-
-        if self._flush_task and not self._flush_task.done():
-            self._flush_task.cancel()
-
-        delay = utterance_flush_delay(" ".join(item.text for item in self._buffered_frames))
-        self._flush_task = asyncio.create_task(self._flush_after_delay(delay, direction))
-
-    async def _flush_after_delay(self, delay: float, direction: FrameDirection):
-        try:
-            await asyncio.sleep(delay)
-            await self._flush_buffer(direction)
-        except asyncio.CancelledError:
-            pass
-
-    async def _flush_buffer(self, direction: FrameDirection):
-        if self._flush_task and self._flush_task.done():
-            self._flush_task = None
-
-        if not self._buffered_frames:
-            return
-
-        frames_to_flush = self._buffered_frames
-        self._buffered_frames = []
-
-        merged_text = normalize_transcript_spacing(" ".join(frame.text for frame in frames_to_flush))
-        last_frame = frames_to_flush[-1]
-        merged_frame = TranscriptionFrame(
-            text=merged_text,
-            user_id=last_frame.user_id,
-            timestamp=last_frame.timestamp,
-            language=last_frame.language,
-            result=last_frame.result,
-            finalized=True,
-        )
-
-        print(f"[UserTurnBufferProcessor] Flushing merged user turn: {merged_text}")
-        turn_id = await write_turn(self.session_id, "user", merged_text)
-        await enqueue_grammar_job(self.session_id, turn_id)
-        try:
-            payload = json.dumps({
-                "type": "user_turn_final",
-                "turnId": turn_id,
-                "text": merged_text,
-            })
-            await self.transport.send_message(payload)
-        except Exception as e:
-            print(f"[UserTurnBufferProcessor] Error sending user turn event: {e}")
-        await self.push_frame(merged_frame, direction)
 
 # ── Main Runner ───────────────────────────────────────────────────────────────
 async def run_agent(session_id: str, scenario_system_prompt: str):
