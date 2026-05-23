@@ -4,7 +4,7 @@ import sys
 from dotenv import load_dotenv
 load_dotenv()
 
-from agent.pipeline import ClauseBoundaryTextChunker
+from agent.voice_agent import ClauseBoundaryTextChunker
 from pipecat.frames.frames import (
     LLMFullResponseStartFrame,
     LLMFullResponseEndFrame,

@@ -7,7 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "doctor": "ts-node src/doctor.ts",
-    "dev:all": "concurrently --names \"api,grammar,memory\" --prefix-colors \"blue,green,magenta\" \"npm run dev\" \"cd ../agent && python3 grammar_worker.py\" \"cd ../agent && python3 memory_worker.py\""
+    "dev:all": "concurrently --names \"api,grammar,memory\" --prefix-colors \"blue,green,magenta\" \"npm run dev\" \"cd .. && python3 -m agent.workers.grammar_worker\" \"cd .. && python3 -m agent.workers.memory_worker\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",

@@ -176,27 +176,23 @@ export async function spawnAgent(session_id: string): Promise<boolean> {
 
     const finalSystemPrompt = `${scenario.system_prompt}${lessonStateInstruction}${memoryInstruction}`;
 
-    // 7. Build absolute paths for spawning python agent conversational pipeline process
-    const agentPath = process.env.AGENT_PATH
-      ? path.resolve(process.env.AGENT_PATH, 'pipeline.py')
-      : path.resolve(__dirname, '../../../agent/pipeline.py');
-
+    // 7. Resolve workspace root directory for spawning python agent as a package module
+    const workspaceRoot = path.resolve(__dirname, '../../../');
     const pythonBinary = process.env.PYTHON_BINARY || 'python3';
 
-    console.log(`[Agent Spawn] Spawning pipeline agent process...`);
+    console.log(`[Agent Spawn] Spawning package-based voice tutor agent...`);
     console.log(`  Binary: ${pythonBinary}`);
-    console.log(`  Script: ${agentPath}`);
+    console.log(`  Module: agent.voice_agent`);
+    console.log(`  CWD: ${workspaceRoot}`);
     console.log(`  Session ID: ${session_id}`);
 
-    const logDir = process.env.AGENT_PATH
-      ? path.resolve(process.env.AGENT_PATH)
-      : path.resolve(__dirname, '../../../agent');
-    const logFilePath = path.join(logDir, 'agent_runtime.log');
+    const logFilePath = path.join(workspaceRoot, 'agent', 'agent_runtime.log');
     const logFd = fs.openSync(logFilePath, 'a');
 
-    // Use environment variable AGENT_SYSTEM_PROMPT to transfer prompt cleanly (shell injection proof)
-    const child = spawn(pythonBinary, [agentPath, session_id], {
+    // Use standard python -m module execution with cwd at the package parent directory (workspace root)
+    const child = spawn(pythonBinary, ['-m', 'agent.voice_agent', session_id], {
       detached: true,
+      cwd: workspaceRoot,
       env: {
         ...process.env,
         AGENT_SYSTEM_PROMPT: finalSystemPrompt
@@ -205,7 +201,7 @@ export async function spawnAgent(session_id: string): Promise<boolean> {
     });
     child.unref();
 
-    console.log(`[Agent Spawn] Detached pipeline agent process successfully spawned for session: ${session_id}`);
+    console.log(`[Agent Spawn] Detached voice agent process successfully spawned for session: ${session_id}`);
     console.log(`  Agent runtime logs appended to: ${logFilePath}`);
     return true;
   } catch (err: any) {

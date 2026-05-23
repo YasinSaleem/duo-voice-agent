@@ -4,7 +4,7 @@ import json
 from dotenv import load_dotenv
 from groq import Groq
 
-from agent.pipeline import build_system_prompt
+from agent.voice_agent import build_system_prompt
 from agent.prompts.grammar_policy import GRAMMAR_SYSTEM_PROMPT
 
 load_dotenv()

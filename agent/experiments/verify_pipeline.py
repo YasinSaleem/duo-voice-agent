@@ -3,7 +3,7 @@ import sys
 import asyncio
 from bson import ObjectId
 
-from agent.pipeline import _mint_agent_token
+from agent.voice_agent import _mint_agent_token
 from agent.core.db import write_turn, enqueue_grammar_job, redis_async_client as redis, turns_col
 from agent.processors.turn_buffer import UserTurnBufferProcessor
 
