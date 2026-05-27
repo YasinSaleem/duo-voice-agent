@@ -2038,6 +2038,30 @@
         return false;
       }
 
+      // Resolve HTTP Poll vs LiveKit WebSocket Race Condition:
+      // If the HTTP poll completes before the real-time final LiveKit message,
+      // match the polled user turn against the active interim bubble transcript to lock it in early.
+      if (turn.role === 'user' && !state.activeInterim.closed && state.activeInterim.turnId && state.activeInterim.bubble) {
+        const cleanPolled = turn.transcript.trim().toLowerCase();
+        const cleanInterim = state.activeInterim.bubble.textContent.trim().toLowerCase();
+        // Match either exact string or alphanumeric content only (to ignore punctuation differences)
+        if (cleanPolled === cleanInterim || cleanPolled.replace(/[^\w\s]/g, '') === cleanInterim.replace(/[^\w\s]/g, '')) {
+          console.log(`[Polling Sync] Deduped polled turn against active interim: matching IDs ${state.activeInterim.turnId} -> ${turn.id}`);
+          
+          state.activeInterim.closed = true;
+          state.activeInterim.bubble.textContent = turn.transcript;
+          state.activeInterim.bubble.classList.remove('interim');
+          
+          state.localTurnsMap.set(turn.id, {
+            bubbleWrapper: state.activeInterim.bubbleWrapper,
+            bubble: state.activeInterim.bubble
+          });
+          
+          appendCorrectionUI(state.activeInterim.bubble, turn.corrections);
+          return false; // Handled, do not create a new bubble
+        }
+      }
+
       const bubbleWrapper = document.createElement('div');
       bubbleWrapper.className = `bubble-wrapper ${turn.role}`;
       
