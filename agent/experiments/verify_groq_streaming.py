@@ -73,7 +73,7 @@ def main() -> int:
         return 1
 
     client = Groq(api_key=api_key)
-    model_name = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+    model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     print("=== Groq Streaming Verification ===")
     print(f"Model: {model_name}")

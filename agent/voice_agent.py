@@ -96,10 +96,10 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     latency_tracker = LatencyTracker(session_id)
     llm_max_tokens = int(os.environ.get("GROQ_MAX_COMPLETION_TOKENS", "120"))
     latency_tracker.register_baseline_config(
-        llm_model="llama-3.1-8b-instant",
+        llm_model="llama-3.3-70b-versatile",
         stt_model="nova-3-general",
         stt_language="multi",
-        tts_voice="aura-2-selena-es",
+        tts_voice="aura-2-javier-es",
         max_completion_tokens=llm_max_tokens,
         system_prompt_chars=len(system_prompt),
         system_prompt_words=len(system_prompt.split()),
@@ -150,13 +150,13 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         )
     )
 
-    # 4. Deepgram TTS — SENTENCE mode; clause chunker upstream sends phrase-sized TextFrames
+    # 4. Deepgram TTS — TOKEN mode; clause chunker upstream sends phrase-sized TextFrames
     tts = DeepgramTTSService(
         api_key=os.environ["DEEPGRAM_API_KEY"],
-        text_aggregation_mode=TextAggregationMode.SENTENCE,
+        text_aggregation_mode=TextAggregationMode.TOKEN,
         settings=DeepgramTTSService.Settings(
-            voice="aura-2-selena-es",
-            extra={"speed": 1.5}
+            voice="aura-2-javier-es",
+            extra={"speed": 1.1}
         ),
     )
 
@@ -180,7 +180,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     llm = TimedGroqLLMService(
         api_key=os.environ["GROQ_API_KEY"],
         settings=GroqLLMService.Settings(
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             max_completion_tokens=llm_max_tokens,
         ),
         context=context,
@@ -263,8 +263,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         except Exception as e:
             print(f"[Pipeline] Error sending greeting text: {e}")
         
-        for phrase in split_tts_phrases(greeting):
-            await task.queue_frame(TTSSpeakFrame(phrase))
+        await task.queue_frame(TTSSpeakFrame(greeting))
 
     @transport.event_handler("on_participant_disconnected")
     async def on_participant_disconnected(transport, participant_id):

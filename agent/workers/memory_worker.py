@@ -80,7 +80,7 @@ async def process_memory_job(payload: dict):
     try:
         # 4. Call Groq with Enforced response format JSON
         response = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": MEMORY_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Transcript:\n{transcript_text}"}

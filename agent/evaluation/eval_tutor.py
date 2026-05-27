@@ -10,7 +10,7 @@ from agent.prompts.grammar_policy import GRAMMAR_SYSTEM_PROMPT
 load_dotenv()
 
 # We use the fast/cheap model for evaluations to avoid rate limits or permission issues.
-EVAL_MODEL = "llama-3.1-8b-instant"
+EVAL_MODEL = "llama-3.3-70b-versatile"
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 SCENARIO_PROMPT = """

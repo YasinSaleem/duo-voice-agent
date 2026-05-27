@@ -9,7 +9,7 @@ load_dotenv()
 
 # We will try a simple HTTPS POST request to Deepgram's REST API for TTS to see the actual error message!
 api_key = os.getenv("DEEPGRAM_API_KEY")
-url = "https://api.deepgram.com/v1/speak?model=aura-2-selena-es"
+url = "https://api.deepgram.com/v1/speak?model=aura-2-javier-es"
 
 headers = {
     "Authorization": f"Token {api_key}",

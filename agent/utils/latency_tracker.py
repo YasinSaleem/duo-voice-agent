@@ -30,7 +30,7 @@ _AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LATENCY_LOG_PATH = os.path.join(_AGENT_DIR, "latency_runtime.log")
 
 # Provider list prices used for session extrapolation (pay-as-you-go, May 2026).
-# Groq: https://groq.com/pricing — llama-3.1-8b-instant
+# Groq: https://groq.com/pricing — llama-3.3-70b-versatile
 GROQ_INPUT_USD_PER_MILLION_TOKENS = 0.05
 GROQ_OUTPUT_USD_PER_MILLION_TOKENS = 0.08
 # Deepgram: https://deepgram.com/pricing — Nova-3 Multilingual streaming

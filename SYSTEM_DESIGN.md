@@ -12,13 +12,13 @@ The system is a distributed, event-driven stack that separates the real-time voi
   - `api/src/services/livekit.ts` spawns the agent as a detached Python process (`python -m agent.voice_agent`) and injects the assembled system prompt (scenario + lesson state + recent memories).
 
 - **Real-Time Voice Pipeline (Pipecat + LiveKit):**
-  - `agent/voice_agent.py` builds a Pipecat pipeline: LiveKit transport → Deepgram STT (Nova-3 general, multi-language) → user turn buffer → Groq LLM (llama-3.1-8b-instant) → clause chunker → tutor text streamer → Deepgram TTS (aura-2-sirio-es) → LiveKit output.
+  - `agent/voice_agent.py` builds a Pipecat pipeline: LiveKit transport → Deepgram STT (Nova-3 general, multi-language) → user turn buffer → Groq LLM (llama-3.3-70b-versatile) → clause chunker → tutor text streamer → Deepgram TTS (aura-2-sirio-es) → LiveKit output.
   - `ClauseBoundaryTextChunker` flushes phrase-sized text frames at punctuation to reduce perceived latency without token-by-token TTS.
   - `UserTurnBufferProcessor` merges nearby transcription chunks into a single user turn, persists to MongoDB, and enqueues a grammar job.
 
 - **Async Workers (Python daemons + Upstash Redis):**
   - Grammar worker (`agent/workers/grammar_worker.py`) pulls from `grammar_jobs` and uses Groq Qwen3-32B to produce `{error, correction, explanation}` stored in MongoDB.
-  - Memory worker (`agent/workers/memory_worker.py`) pulls from `memory_jobs`, summarizes full transcripts with Groq llama-3.1-8b-instant, and writes structured memories to Supabase.
+  - Memory worker (`agent/workers/memory_worker.py`) pulls from `memory_jobs`, summarizes full transcripts with Groq llama-3.3-70b-versatile, and writes structured memories to Supabase.
 
 - **Storage:**
   - MongoDB: high-throughput turn storage and grammar corrections.
@@ -47,7 +47,7 @@ Instrumented via hardcoded pipeline logging to `agent/latency_runtime.log` (JSON
 
 | Component | Value |
 | --- | --- |
-| LLM | Groq `llama-3.1-8b-instant` |
+| LLM | Groq `llama-3.3-70b-versatile` |
 | STT | Deepgram `nova-3-general` (multi) |
 | TTS | Deepgram `aura-2-sirio-es` |
 | Max completion tokens | 120 |
@@ -136,7 +136,7 @@ All Python validation and trace scripts must be run from the **project root dire
 
 ## 💰 Costs
 
-- **Groq:** low-cost, high-throughput inference for llama-3.1-8b-instant and Qwen3-32B (grammar).
+- **Groq:** low-cost, high-throughput inference for llama-3.3-70b-versatile and Qwen3-32B (grammar).
 - **Deepgram:** STT (Nova-3) + TTS (Aura) billed per minute; websocket usage keeps latency low but has a cold-start cost.
 - **Upstash Redis / Supabase / MongoDB Atlas:** serverless pricing tiers suitable for early-stage usage and low idle cost.
 - **LiveKit Cloud:** pay-as-you-go bandwidth/egress; predictable scaling for WebRTC sessions.
