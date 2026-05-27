@@ -109,7 +109,7 @@ async def main() -> int:
     user_text = args.user_text or DEFAULT_USER_TEXT
 
     model_name = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-    voice = os.getenv("DEEPGRAM_VOICE", "aura-2-sirio-es")
+    voice = os.getenv("DEEPGRAM_VOICE", "aura-2-selena-es")
 
     context = LLMContext([
         {"role": "system", "content": system_prompt},

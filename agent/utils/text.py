@@ -3,58 +3,48 @@ import re
 def normalize_transcript_spacing(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
-CLAUSE_BOUNDARY_CHARS = frozenset(",.!?;:")
+# Match punctuation: . ! ? ; : ,
+# Not preceded by common abbreviations.
+# Followed by optional closing quotes/parens.
+# Then followed by:
+#  - space \s+
+#  - uppercase letter or inverted punctuation [A-Z¡¿]
+#  - or if the punctuation was ? or !, allow any letter [a-zA-Z¡¿]
+BOUNDARY_REGEX = re.compile(
+    r'(?<!\bMr)(?<!\bMrs)(?<!\bMs)(?<!\bDr)(?<!\bProf)(?<!\bSr)(?<!\bSra)(?<!\bvs)(?<!\betc)'
+    r'(?<!\ba\.m)(?<!\bp\.m)(?<!\be\.g)(?<!\bi\.e)'
+    r'(?:'
+        r'([!?]+[\'\"\)\]}]*)(?=\s|[a-zA-Z¡¿])'
+        r'|'
+        r'([.;:,]+[\'\"\)\]}]*)(?=\s|[A-Z¡¿])'
+    r')'
+)
 
 def drain_clause_boundary_phrases(buffer: str) -> tuple[list[str], str]:
     """Extract speakable phrases ending at comma, period, etc. Returns (phrases, remainder)."""
-    phrases: list[str] = []
-    i = 0
-    n = len(buffer)
-
-    while i < n:
-        cut = None
-        for j in range(i, n):
-            ch = buffer[j]
-            if ch not in CLAUSE_BOUNDARY_CHARS:
-                continue
-
-            if j == n - 1:
-                if ch in ".!?":
-                    cut = j + 1
-                break
-
-            nxt = buffer[j + 1]
-            if ch == ",":
-                if nxt.isdigit():
-                    continue
-                if nxt.isspace() or nxt in "\"')]}":
-                    cut = j + 1
-                    break
-            elif nxt.isspace() or nxt in "\"')]}":
-                cut = j + 1
-                break
-
-        if cut is None:
+    phrases = []
+    while True:
+        match = BOUNDARY_REGEX.search(buffer)
+        if not match:
             break
-
-        phrase = buffer[i:cut]
+        cut = match.end()
+        phrase = buffer[:cut]
         if phrase.strip():
             phrases.append(phrase)
-        i = cut
-        while i < n and buffer[i].isspace():
-            i += 1
-
-    return phrases, buffer[i:]
+        buffer = buffer[cut:]
+    return phrases, buffer
 
 def split_tts_phrases(text: str) -> list[str]:
     """Split full lines into clause-sized TTS phrases (commas, stops, etc.)."""
     normalized = normalize_transcript_spacing(text)
     if not normalized:
         return []
-    phrases, remainder = drain_clause_boundary_phrases(normalized)
+    # append a space so the regex can match the end of the sentence
+    phrases, remainder = drain_clause_boundary_phrases(normalized + " ")
     if remainder.strip():
         phrases.append(remainder.strip())
-    return phrases
+    # Clean up any trailing space we added
+    return [p.strip() for p in phrases]
 
 def utterance_flush_delay(text: str) -> float:
     """

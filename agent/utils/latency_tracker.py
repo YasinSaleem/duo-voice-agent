@@ -154,8 +154,13 @@ class LatencyTracker:
         self._current_tts_audio_seconds = 0.0
 
     def mark_event(self, event: str, ts: float | None = None, **fields: Any) -> None:
-        turn_id = self._ensure_turn("implicit")
         timestamp = ts if ts is not None else time.perf_counter()
+        if self._active_turn_id is None:
+            if event in ("tts_stopped", "bot_stopped_speaking", "interruption", "barge_in_resolved"):
+                self._log_event(event, turn_id=None, **fields)
+                return
+
+        turn_id = self._ensure_turn("implicit")
         turn = self._turn_data.setdefault(turn_id, {})
         if event not in turn:
             turn[event] = timestamp
@@ -179,6 +184,7 @@ class LatencyTracker:
                 )
                 self._maybe_log_percentiles("barge_in_latency")
                 self._barge_in_start_ts = None
+            self.finish_turn()
 
     def on_vad_user_started(self) -> None:
         if self._active_turn_id is None:
@@ -317,7 +323,6 @@ class LatencyTracker:
         turn["breakdown_logged"] = True
         self._maybe_log_percentiles("end_to_end_voice_latency")
         self._maybe_log_percentiles("response_latency")
-        self.finish_turn()
 
     def _avg_prompt_chars(self) -> int:
         if self._prompt_stats:

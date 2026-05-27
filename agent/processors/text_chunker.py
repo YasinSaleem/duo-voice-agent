@@ -38,6 +38,7 @@ class ClauseBoundaryTextChunker(FrameProcessor):
         stripped = phrase.strip()
         if not stripped:
             return
+        print(f"[ClauseBoundaryTextChunker] Emitting phrase: '{stripped}'")
         await self.push_frame(TextFrame(stripped), direction)
         self._has_emitted = True
 
@@ -45,14 +46,17 @@ class ClauseBoundaryTextChunker(FrameProcessor):
         for phrase in phrases:
             if self._pending_phrase:
                 combined = f"{self._pending_phrase} {phrase}".strip()
+                print(f"[ClauseBoundaryTextChunker] Combining pending '{self._pending_phrase}' with '{phrase}' -> '{combined}'")
                 if self._should_hold_single_word(combined):
                     self._pending_phrase = combined
                 else:
                     await self._emit_phrase(combined, direction)
                     self._pending_phrase = ""
             elif self._should_hold_single_word(phrase):
+                print(f"[ClauseBoundaryTextChunker] Holding single-word phrase: '{phrase.strip()}'")
                 self._pending_phrase = phrase.strip()
             else:
+                print(f"[ClauseBoundaryTextChunker] Emitting phrase from list: '{phrase}'")
                 await self._emit_phrase(phrase, direction)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):

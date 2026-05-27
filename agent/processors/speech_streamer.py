@@ -19,6 +19,7 @@ class TutorSpeechStreamer(FrameProcessor):
         try:
             await redis.set(f"agent_speaking:{self.session_id}", "1", ex=30)
             await redis.set(f"agent_speaking_text:{self.session_id}", text, ex=30)
+            print(f"[TutorSpeechStreamer] Sending chunk to client: '{text}'")
             payload = json.dumps({"type": "tutor_text_chunk", "text": text})
             await self.transport.send_message(payload)
         except Exception as e:
