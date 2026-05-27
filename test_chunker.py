@@ -14,7 +14,7 @@ async def main():
     
     await chunker.process_frame(LLMFullResponseStartFrame(), None)
     
-    text = "¡Excelente! Sr. Smith, I love your work. It is... amazing. Hola?how are you. Im fine.And you"
+    text = 'Let\'s start by looking at a menu, which is called "el menú" in Spanish, and it means "the menu".'
     for char in text:
         await chunker.process_frame(TextFrame(char), None)
         

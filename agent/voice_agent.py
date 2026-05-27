@@ -296,6 +296,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     try:
         await runner.run(task)
     finally:
+        await tutor_speech_streamer.cleanup()
         latency_tracker.log_session_summary()
         latency_tracker.log_five_minute_cost_estimate()
     try:

@@ -13,7 +13,21 @@ class TutorSpeechStreamer(FrameProcessor):
         super().__init__()
         self.transport = transport
         self.session_id = session_id
-        self._notify_tasks: set[asyncio.Task] = set()
+        self._queue = asyncio.Queue()
+        self._worker_task = asyncio.create_task(self._queue_worker())
+
+    async def _queue_worker(self) -> None:
+        try:
+            while True:
+                text = await self._queue.get()
+                try:
+                    await self._notify_client(text)
+                except Exception as e:
+                    print(f"[TutorSpeechStreamer] Worker error: {e}")
+                finally:
+                    self._queue.task_done()
+        except asyncio.CancelledError:
+            pass
 
     async def _notify_client(self, text: str) -> None:
         try:
@@ -26,12 +40,17 @@ class TutorSpeechStreamer(FrameProcessor):
             print(f"[TutorSpeechStreamer] Error: {e}")
 
     def _schedule_notify(self, text: str) -> None:
-        task = asyncio.create_task(self._notify_client(text))
-        self._notify_tasks.add(task)
-        task.add_done_callback(self._notify_tasks.discard)
+        self._queue.put_nowait(text)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, TextFrame):
             self._schedule_notify(frame.text)
         await self.push_frame(frame, direction)
+
+    async def cleanup(self) -> None:
+        self._worker_task.cancel()
+        try:
+            await self._worker_task
+        except asyncio.CancelledError:
+            pass
