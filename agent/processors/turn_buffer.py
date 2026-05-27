@@ -6,6 +6,7 @@ from pipecat.frames.frames import (
     Frame,
     EndFrame,
     TranscriptionFrame,
+    InterimTranscriptionFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
@@ -36,11 +37,14 @@ class UserTurnBufferProcessor(FrameProcessor):
         self._last_stt_chunk_ts: float | None = None
         self._pending_flush_delay: float = 0.0
         self._side_effect_tasks: set[asyncio.Task] = set()
+        self._current_turn_id: str | None = None
+        self._current_seq: int = 0
+        self._last_interim_emit_time: float = 0.0
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, TranscriptionFrame):
+        if isinstance(frame, (TranscriptionFrame, InterimTranscriptionFrame)):
             await self._buffer_transcription(frame, direction)
             return
 
@@ -49,7 +53,47 @@ class UserTurnBufferProcessor(FrameProcessor):
 
         await self.push_frame(frame, direction)
 
-    async def _buffer_transcription(self, frame: TranscriptionFrame, direction: FrameDirection):
+    async def _handle_interim_transcription(self, frame: InterimTranscriptionFrame | TranscriptionFrame):
+        text = normalize_transcript_spacing(frame.text)
+        if not text:
+            return
+
+        # Strip all punctuation/symbols to check if there is any actual linguistic content
+        import re
+        clean_text = re.sub(r"[^\w\s]", "", text).strip()
+        if not clean_text:
+            return
+
+        now = time.perf_counter()
+        if now - self._last_interim_emit_time < 0.12:
+            # Throttled!
+            return
+
+        # Ensure turn_id is generated
+        if not self._current_turn_id:
+            import uuid
+            self._current_turn_id = f"user_{uuid.uuid4().hex[:8]}"
+            self._current_seq = 0
+
+        self._current_seq += 1
+        self._last_interim_emit_time = now
+
+        payload = json.dumps({
+            "type": "user_turn_interim",
+            "turn_id": self._current_turn_id,
+            "seq": self._current_seq,
+            "text": text,
+        })
+        try:
+            await self.transport.send_message(payload)
+        except Exception as e:
+            print(f"[UserTurnBufferProcessor] Error sending interim message: {e}", flush=True)
+
+    async def _buffer_transcription(self, frame: TranscriptionFrame | InterimTranscriptionFrame, direction: FrameDirection):
+        if isinstance(frame, InterimTranscriptionFrame):
+            await self._handle_interim_transcription(frame)
+            return
+
         now = time.perf_counter()
         text = normalize_transcript_spacing(frame.text)
         if not text:
@@ -59,14 +103,19 @@ class UserTurnBufferProcessor(FrameProcessor):
         import re
         clean_text = re.sub(r"[^\w\s]", "", text).strip()
         if not clean_text:
-            print(f"[UserTurnBufferProcessor] Discarding STT noise/symbol-only artifact: '{text}'")
+            print(f"[UserTurnBufferProcessor] Discarding STT noise/symbol-only artifact: '{text}'", flush=True)
             return
+
+        if not self._current_turn_id:
+            import uuid
+            self._current_turn_id = f"user_{uuid.uuid4().hex[:8]}"
+            self._current_seq = 0
 
         if not self._buffered_frames:
             await self.push_frame(UserStartedSpeakingFrame(), direction)
 
         self._last_stt_chunk_ts = now
-        print(f"[UserTurnBufferProcessor] Buffering transcript chunk: {text}")
+        print(f"[UserTurnBufferProcessor] Buffering transcript chunk: {text}", flush=True)
         buffered_frame = TranscriptionFrame(
             text=text,
             user_id=frame.user_id,
@@ -91,28 +140,32 @@ class UserTurnBufferProcessor(FrameProcessor):
         except asyncio.CancelledError:
             pass
 
-    def _schedule_side_effects(self, merged_text: str) -> None:
-        task = asyncio.create_task(self._persist_turn_side_effects(merged_text))
+    def _schedule_side_effects(self, merged_text: str, turn_id: str) -> None:
+        task = asyncio.create_task(self._persist_turn_side_effects(merged_text, turn_id))
         self._side_effect_tasks.add(task)
         task.add_done_callback(self._side_effect_tasks.discard)
 
-    async def _persist_turn_side_effects(self, merged_text: str) -> None:
+    async def _persist_turn_side_effects(self, merged_text: str, current_turn_id: str) -> None:
         turn_id = None
         try:
             if self.on_turn_persisted:
                 turn_id = await self.on_turn_persisted(self.session_id, "user", merged_text)
+
+            final_turn_id = turn_id if turn_id else current_turn_id
 
             if turn_id and self.on_grammar_job_enqueued:
                 await self.on_grammar_job_enqueued(self.session_id, turn_id)
 
             payload = json.dumps({
                 "type": "user_turn_final",
-                "turnId": turn_id if turn_id else "",
+                "turn_id": final_turn_id,
+                "turnId": final_turn_id,
+                "interim_turn_id": current_turn_id,
                 "text": merged_text,
             })
             await self.transport.send_message(payload)
         except Exception as e:
-            print(f"[UserTurnBufferProcessor] Error in background turn side effects: {e}")
+            print(f"[UserTurnBufferProcessor] Error in background turn side effects: {e}", flush=True)
 
     async def _flush_buffer(self, direction: FrameDirection):
         now = time.perf_counter()
@@ -142,11 +195,21 @@ class UserTurnBufferProcessor(FrameProcessor):
                 proxy_ts = max(0.0, now - self._pending_flush_delay)
             self._latency.on_user_stop_proxy(proxy_ts, source="utterance_flush_proxy")
 
-        print(f"[UserTurnBufferProcessor] Flushing merged user turn: {merged_text}")
+        print(f"[UserTurnBufferProcessor] Flushing merged user turn: {merged_text}", flush=True)
 
         if self._latency:
             self._latency.record_merged_user_frame()
 
         await self.push_frame(merged_frame, direction)
         await self.push_frame(UserStoppedSpeakingFrame(), direction)
-        self._schedule_side_effects(merged_text)
+
+        turn_id_to_send = self._current_turn_id
+        if not turn_id_to_send:
+            import uuid
+            turn_id_to_send = f"user_{uuid.uuid4().hex[:8]}"
+
+        self._current_turn_id = None
+        self._current_seq = 0
+        self._last_interim_emit_time = 0.0
+
+        self._schedule_side_effects(merged_text, turn_id_to_send)

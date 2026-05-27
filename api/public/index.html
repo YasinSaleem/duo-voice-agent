@@ -789,6 +789,12 @@
       align-items: flex-end;
     }
 
+    .bubble-wrapper.user .chat-bubble.interim {
+      opacity: 0.75;
+      border-style: dashed !important;
+      font-style: italic;
+    }
+
     .bubble-wrapper.agent .chat-bubble {
       background-color: var(--color-tutor-bubble);
       color: var(--color-text-primary);
@@ -1543,7 +1549,14 @@
       // Cache
       localTurnsMap: new Map(),
       tutorSpeechNew: true,
-      enableWebRtcAudioCleanup: false
+      enableWebRtcAudioCleanup: false,
+      activeInterim: {
+        turnId: null,
+        seq: -1,
+        closed: false,
+        bubbleWrapper: null,
+        bubble: null
+      }
     };
 
     // ── ON STARTUP ──
@@ -2057,6 +2070,65 @@
       }
     }
 
+    function renderInterimUserTurn(text, turnId, seq) {
+      if (!text || !turnId) return;
+
+      const timeline = document.getElementById('chat-timeline');
+      if (!timeline) return;
+
+      // 1. If it matches current active interim
+      if (state.activeInterim.turnId === turnId) {
+        if (state.activeInterim.closed) {
+          console.log(`[Interim UI] Ignoring interim packet for closed turn: ${turnId}`);
+          return;
+        }
+        if (seq <= state.activeInterim.seq) {
+          console.log(`[Interim UI] Ignoring stale seq packet (current: ${state.activeInterim.seq}, got: ${seq})`);
+          return;
+        }
+
+        // Update existing bubble
+        state.activeInterim.seq = seq;
+        state.activeInterim.bubble.textContent = text;
+        timeline.scrollTop = timeline.scrollHeight;
+        return;
+      }
+
+      // 2. If it's a new turn, close/clear the previous interim if there was one
+      if (state.activeInterim.turnId && !state.activeInterim.closed) {
+        console.warn(`[Interim UI] Closing stale active interim turn: ${state.activeInterim.turnId}`);
+        state.activeInterim.closed = true;
+      }
+
+      // Create a brand new bubble
+      removeTimelineEmptyState();
+
+      const bubbleWrapper = document.createElement('div');
+      bubbleWrapper.className = 'bubble-wrapper user';
+
+      const sender = document.createElement('div');
+      sender.className = 'bubble-sender';
+      sender.textContent = 'You';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble interim';
+      bubble.textContent = text;
+
+      bubbleWrapper.appendChild(sender);
+      bubbleWrapper.appendChild(bubble);
+      timeline.appendChild(bubbleWrapper);
+      timeline.scrollTop = timeline.scrollHeight;
+
+      // Store in state
+      state.activeInterim = {
+        turnId: turnId,
+        seq: seq,
+        closed: false,
+        bubbleWrapper: bubbleWrapper,
+        bubble: bubble
+      };
+    }
+
     // ── START SESSION WEBRTC ──
     async function handleStartSession() {
       if (!state.selectedScenarioId) return;
@@ -2183,13 +2255,39 @@
                   textEl.textContent += data.text;
                   container.scrollTop = container.scrollHeight;
                 }
+              } else if (data.type === 'user_turn_interim') {
+                renderInterimUserTurn(data.text, data.turn_id, data.seq);
               } else if (data.type === 'user_turn_final') {
-                renderIncomingUserTurn({
-                  id: data.turnId,
-                  role: 'user',
-                  transcript: data.text,
-                  corrections: null,
-                });
+                const finalTurnId = data.turn_id || data.turnId;
+                const interimTurnId = data.interim_turn_id;
+                if (state.activeInterim.turnId === finalTurnId || (interimTurnId && state.activeInterim.turnId === interimTurnId)) {
+                  // Lock in interim turn
+                  state.activeInterim.closed = true;
+                  state.activeInterim.bubble.textContent = data.text;
+                  state.activeInterim.bubble.classList.remove('interim'); // remove interim styling
+                  
+                  // Map to localTurnsMap under final ID
+                  state.localTurnsMap.set(finalTurnId, {
+                    bubbleWrapper: state.activeInterim.bubbleWrapper,
+                    bubble: state.activeInterim.bubble
+                  });
+                  
+                  const timeline = document.getElementById('chat-timeline');
+                  if (timeline) {
+                    timeline.scrollTop = timeline.scrollHeight;
+                  }
+                } else {
+                  // Fallback: create new bubble if interim bubble didn't exist or didn't match
+                  if (state.activeInterim.turnId && !state.activeInterim.closed) {
+                    state.activeInterim.closed = true;
+                  }
+                  renderIncomingUserTurn({
+                    id: finalTurnId,
+                    role: 'user',
+                    transcript: data.text,
+                    corrections: null,
+                  });
+                }
               } else if (data.type === 'tutor_text_end') {
                 state.tutorSpeechNew = true;
               }

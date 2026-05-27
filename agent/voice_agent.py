@@ -146,6 +146,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
             model="nova-3-general",
             endpointing="400",    # Tuned from 200ms to allow thinking pauses without early cut-off
             smart_format=True,
+            interim_results=True,
         )
     )
 
