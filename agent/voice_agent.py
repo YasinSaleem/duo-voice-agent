@@ -3,13 +3,14 @@ import asyncio
 import os
 import json
 import sys
+import mlx.core as mx
 
 # Pipecat 1.2.1 imports
 from pipecat.transports.livekit.transport import LiveKitTransport, LiveKitParams
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.deepgram.tts import DeepgramTTSService
+from agent.services.qwen_tts import Qwen3TTSService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.tts_service import TextAggregationMode
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -92,6 +93,8 @@ from agent.utils.text import split_tts_phrases
 
 # ── Main Runner ───────────────────────────────────────────────────────────────
 async def run_agent(session_id: str, scenario_system_prompt: str):
+    # Crucial: Initialize a valid GPU stream for the main thread
+    mx.set_default_device(mx.gpu)
     system_prompt = build_system_prompt(scenario_system_prompt)
     latency_tracker = LatencyTracker(session_id)
     llm_max_tokens = int(os.environ.get("GROQ_MAX_COMPLETION_TOKENS", "120"))
@@ -99,7 +102,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         llm_model="llama-3.3-70b-versatile",
         stt_model="nova-3-general",
         stt_language="multi",
-        tts_voice="aura-2-javier-es",
+        tts_voice="qwen3-tts-0.6b-instruct",
         max_completion_tokens=llm_max_tokens,
         system_prompt_chars=len(system_prompt),
         system_prompt_words=len(system_prompt.split()),
@@ -150,14 +153,10 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         )
     )
 
-    # 4. Deepgram TTS — TOKEN mode; clause chunker upstream sends phrase-sized TextFrames
-    tts = DeepgramTTSService(
-        api_key=os.environ["DEEPGRAM_API_KEY"],
-        text_aggregation_mode=TextAggregationMode.TOKEN,
-        settings=DeepgramTTSService.Settings(
-            voice="aura-2-javier-es",
-            extra={"speed": 1.1}
-        ),
+    # 4. Qwen3-TTS — SENTENCE mode running locally on MLX framework
+    # SENTENCE aggregation is selected to maximize prosody and expressive style consistency
+    tts = Qwen3TTSService(
+        text_aggregation_mode=TextAggregationMode.SENTENCE
     )
 
 

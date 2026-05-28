@@ -1,5 +1,10 @@
 # Pipecat agent worker requirements
 pipecat-ai[livekit,deepgram,groq]
+mlx-audio
+mlx-lm
+transformers
+soundfile
+numpy
 pymongo
 motor
 upstash-redis

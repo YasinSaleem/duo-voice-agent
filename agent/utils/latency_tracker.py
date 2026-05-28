@@ -35,8 +35,8 @@ GROQ_INPUT_USD_PER_MILLION_TOKENS = 0.05
 GROQ_OUTPUT_USD_PER_MILLION_TOKENS = 0.08
 # Deepgram: https://deepgram.com/pricing — Nova-3 Multilingual streaming
 DEEPGRAM_NOVA3_MULTILINGUAL_USD_PER_MINUTE = 0.0058
-# Deepgram Aura-2 TTS (character billing)
-DEEPGRAM_AURA2_USD_PER_1K_CHARACTERS = 0.030
+# Local Qwen3-TTS on-device running via MLX is free
+QWEN3_TTS_USD_PER_1K_CHARACTERS = 0.000
 
 FIVE_MINUTE_SESSION_SECONDS = 300.0
 DEFAULT_USER_SPEECH_FRACTION = 0.5
@@ -384,7 +384,7 @@ class LatencyTracker:
         )
         stt_cost = user_audio_seconds / 60.0 * DEEPGRAM_NOVA3_MULTILINGUAL_USD_PER_MINUTE
         tts_chars = estimated_turns * avg_completion_chars
-        tts_cost = tts_chars / 1000.0 * DEEPGRAM_AURA2_USD_PER_1K_CHARACTERS
+        tts_cost = tts_chars / 1000.0 * QWEN3_TTS_USD_PER_1K_CHARACTERS
         total_usd = llm_input_cost + llm_output_cost + stt_cost + tts_cost
 
         self._log_event(
