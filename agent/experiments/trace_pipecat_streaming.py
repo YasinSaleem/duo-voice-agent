@@ -180,6 +180,21 @@ async def main() -> int:
     print(f"Request end (UTC): {_utc_timestamp()}")
     print(f"Total completion time: {end_ts - start_ts:.3f}s")
 
+    # Log LLM-to-TTS audio latency delta
+    llm_first_token_received = llm_text_logger.first_ts
+    tts_first_audio_frame_sent = audio_logger.first_ts
+    if llm_first_token_received is not None and tts_first_audio_frame_sent is not None:
+        delta = tts_first_audio_frame_sent - llm_first_token_received
+        print(f"\n--- Latency Performance Focus ---")
+        print(f"LLM First Token Received: +{llm_first_token_received - start_ts:.3f}s")
+        print(f"TTS First Audio Frame Sent: +{tts_first_audio_frame_sent - start_ts:.3f}s")
+        print(f"Delta (LLM first token to TTS first audio frame): {delta:.3f}s")
+        print(f"----------------------------------\n")
+    else:
+        print("\n--- Latency Performance Focus ---")
+        print("Could not calculate LLM-to-TTS-audio delta (missing frame logs).")
+        print(f"----------------------------------\n")
+
     return 0
 
 

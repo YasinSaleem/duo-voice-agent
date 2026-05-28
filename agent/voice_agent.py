@@ -144,13 +144,13 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         settings=DeepgramSTTService.Settings(
             language="multi",
             model="nova-3-general",
-            endpointing="400",    # Tuned from 200ms to allow thinking pauses without early cut-off
+            endpointing="350",    # Balance snappiness with safety buffer against natural breath-pauses
             smart_format=True,
-            interim_results=True,
+            interim_results=False, # Disabled to remove intermediary bubbles
         )
     )
 
-    # 4. Deepgram TTS — TOKEN mode; clause chunker upstream sends phrase-sized TextFrames
+    # 4. Deepgram TTS — TOKEN mode (Clause chunker handles grouping upstream, yields immediately)
     tts = DeepgramTTSService(
         api_key=os.environ["DEEPGRAM_API_KEY"],
         text_aggregation_mode=TextAggregationMode.TOKEN,
