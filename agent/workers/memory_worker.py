@@ -2,8 +2,10 @@ import agent.core.bootstrap
 import asyncio
 import json
 import os
+import signal
 
 from groq import Groq
+from tenacity import retry, stop_after_attempt, wait_exponential
 from agent.core.db import turns_col, redis_client as redis, supabase
 
 # ------------------------------------------------------------------------------
@@ -20,6 +22,13 @@ from agent.core.db import turns_col, redis_client as redis, supabase
 groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
 from agent.prompts.memory_policy import MEMORY_SYSTEM_PROMPT
+
+# Retry decorator for transient DB failures
+_db_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=0.1, max=2),
+    reraise=True,
+)
 
 async def fetch_scenario_title(session_id: str) -> str:
     """Deterministic scenario title lookup using official supabase-py client."""
@@ -49,6 +58,11 @@ async def check_memory_exists(session_id: str) -> bool:
     except Exception as e:
         print(f"[MemoryWorker] Error checking memory existence: {e}")
         return False
+
+@_db_retry
+async def _insert_memory(supabase_payload: dict):
+    """Insert memory to Supabase with retry on transient failures."""
+    supabase.table("memories").insert(supabase_payload).execute()
 
 async def process_memory_job(payload: dict):
     session_id = payload.get("sessionId")
@@ -106,9 +120,9 @@ async def process_memory_job(payload: dict):
             "key_takeaways": memory_data["key_takeaways"]
         }
         
-        # 8. Save memory to database; handle uniqueness constraint gracefully
+        # 8. Save memory to database with retry; handle uniqueness constraint gracefully
         try:
-            supabase.table("memories").insert(supabase_payload).execute()
+            await _insert_memory(supabase_payload)
             print(f"[MemoryWorker] Memory successfully created for session {session_id}")
         except Exception as insert_err:
             err_msg = str(insert_err)
@@ -120,10 +134,19 @@ async def process_memory_job(payload: dict):
     except Exception as e:
         print(f"[MemoryWorker] Error during memory generation process: {e}")
 
+# Graceful shutdown coordination
+_shutdown_event = asyncio.Event()
+
 async def main():
     print("[MemoryWorker] Starting background memory aggregator...")
     print("[MemoryWorker] Listening on queue: 'memory_jobs'...")
-    while True:
+
+    # Register signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, _shutdown_event.set)
+
+    while not _shutdown_event.is_set():
         try:
             result = redis.lpop("memory_jobs")
             if result:
@@ -133,7 +156,14 @@ async def main():
                 continue
         except Exception as e:
             print(f"[MemoryWorker] Lifecycle loop exception: {e}")
-        await asyncio.sleep(2.0)
+
+        # Use wait with timeout so we can respond to shutdown signals promptly
+        try:
+            await asyncio.wait_for(_shutdown_event.wait(), timeout=2.0)
+        except asyncio.TimeoutError:
+            pass
+
+    print("[MemoryWorker] Shutdown signal received. Exiting cleanly.")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -2,6 +2,7 @@ import agent.core.bootstrap
 import asyncio
 import os
 import json
+import signal
 import sys
 
 # Pipecat 1.2.1 imports
@@ -29,7 +30,7 @@ from pipecat.frames.frames import (
 )
 
 from agent.utils.session_context import load_prior_context
-from agent.core.db import redis_async_client as redis, write_turn
+from agent.core.db import redis_async_client as redis, mongo_client, write_turn
 from agent.prompts.tutor_policy import GLOBAL_TUTOR_POLICY
 from agent.processors.text_chunker import ClauseBoundaryTextChunker
 from agent.processors.speech_streamer import TutorSpeechStreamer
@@ -99,7 +100,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         llm_model="llama-3.3-70b-versatile",
         stt_model="nova-3-general",
         stt_language="multi",
-        tts_voice="aura-2-javier-es",
+        tts_voice="aura-2-alvaro-es",
         max_completion_tokens=llm_max_tokens,
         system_prompt_chars=len(system_prompt),
         system_prompt_words=len(system_prompt.split()),
@@ -108,20 +109,20 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     print(f"[Startup] Latency log: {LATENCY_LOG_PATH}")
 
     # Load turn history (empty list if new session, last 10 turns if resumed)
-    prior_messages = load_prior_context(session_id)
+    prior_messages = await load_prior_context(session_id)
 
     try:
         await redis.set(f"agent_pid:{session_id}", str(os.getpid()), ex=3600)
     except Exception as e:
         print(f"[Pipeline] Failed to store agent pid: {e}")
 
-    # 1. Silero Voice Activity Detector (optimized for noise hallucination filtering)
+    # 1. Silero Voice Activity Detector (optimized for noise filtering and rapid responsiveness)
     vad = SileroVADAnalyzer(
         params=VADParams(
-            start_secs=0.35,      # Filter brief transient noises (<350ms)
+            start_secs=0.20,      # Capture brief words (like 'sí' or 'no') while filtering pops (<200ms)
             stop_secs=0.50,       # Allow natural conversational/breathing pauses
-            confidence=0.80,      # Prevent low-level speech breathing triggers
-            min_volume=0.6,       # Drop background ambient hums
+            confidence=0.50,      # Standard robust Silero VAD model threshold
+            min_volume=0.05,      # Conversational volume threshold (allows soft/normal speech)
         )
     )
 
@@ -144,7 +145,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         settings=DeepgramSTTService.Settings(
             language="multi",
             model="nova-3-general",
-            endpointing="350",    # Balance snappiness with safety buffer against natural breath-pauses
+            endpointing=350,    # Balance snappiness with safety buffer against natural breath-pauses (as integer)
             smart_format=True,
             interim_results=False, # Disabled to remove intermediary bubbles
         )
@@ -155,7 +156,7 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         api_key=os.environ["DEEPGRAM_API_KEY"],
         text_aggregation_mode=TextAggregationMode.TOKEN,
         settings=DeepgramTTSService.Settings(
-            voice="aura-2-javier-es",
+            voice="aura-2-alvaro-es",
             extra={"speed": 1.1}
         ),
     )
@@ -273,24 +274,45 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
     # Monitor assistant aggregator for agent turns (including the greeting text)
     @assistant_aggregator.event_handler("on_assistant_turn_stopped")
     async def on_agent_turn(processor, message):
-        if message.content:
-            interrupted = getattr(message, "interrupted", False)
-            if interrupted:
-                print(f"[Pipeline] Tutor was interrupted. Skipping database log writing for: {message.content}")
-            else:
-                clean_content = message.content.strip()
-                print(f"[Pipeline] Intercepted agent turn: {clean_content}")
-                await write_turn(session_id, "agent", clean_content)
-            try:
-                payload = json.dumps({"type": "tutor_text_end"})
-                await transport.send_message(payload)
-                await redis.delete(f"agent_speaking:{session_id}")
-                await redis.delete(f"agent_speaking_text:{session_id}")
-            except Exception as e:
-                print(f"[Pipeline] Error sending tutor_text_end: {e}")
+        try:
+            # 1. Send tutor_text_end WebSocket event instantly!
+            payload = json.dumps({"type": "tutor_text_end"})
+            await transport.send_message(payload)
+
+            # 2. Perform DB write and Redis cleanups in background tasks
+            if message.content:
+                interrupted = getattr(message, "interrupted", False)
+                if interrupted:
+                    print(f"[Pipeline] Tutor was interrupted. Skipping database log writing for: {message.content}")
+                else:
+                    clean_content = message.content.strip()
+                    print(f"[Pipeline] Intercepted agent turn: {clean_content}")
+                    asyncio.create_task(write_turn(session_id, "agent", clean_content))
+
+            async def _bg_cleanup():
+                try:
+                    await redis.delete(f"agent_speaking:{session_id}")
+                    await redis.delete(f"agent_speaking_text:{session_id}")
+                except Exception as re:
+                    print(f"[Pipeline] Background cleanup error: {re}")
+
+            asyncio.create_task(_bg_cleanup())
+        except Exception as e:
+            print(f"[Pipeline] Error sending tutor_text_end: {e}")
 
     # ── Execution ─────────────────────────────────────────────────────────────
     runner = PipelineRunner()
+
+    # Register SIGTERM/SIGINT to trigger Pipecat's clean shutdown path
+    def _handle_shutdown(signum, frame):
+        sig_name = signal.Signals(signum).name
+        print(f"[Pipeline] Received {sig_name}, initiating graceful shutdown...")
+        asyncio.get_event_loop().call_soon_threadsafe(
+            task.queue_frame, EndFrame()
+        )
+
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+    signal.signal(signal.SIGINT, _handle_shutdown)
     
     print(f"[Pipeline] Starting voice loop for room: {session_id}")
     try:
@@ -299,12 +321,18 @@ async def run_agent(session_id: str, scenario_system_prompt: str):
         await tutor_speech_streamer.cleanup()
         latency_tracker.log_session_summary()
         latency_tracker.log_five_minute_cost_estimate()
-    try:
-        await redis.delete(f"agent_pid:{session_id}")
-        await redis.delete(f"agent_speaking:{session_id}")
-        await redis.delete(f"agent_speaking_text:{session_id}")
-    except Exception as e:
-        print(f"[Pipeline] Failed to clear agent redis keys: {e}")
+        latency_tracker.shutdown_writer()
+        # Clean up Redis keys and close connections
+        try:
+            await redis.delete(f"agent_pid:{session_id}")
+            await redis.delete(f"agent_speaking:{session_id}")
+            await redis.delete(f"agent_speaking_text:{session_id}")
+        except Exception as e:
+            print(f"[Pipeline] Failed to clear agent redis keys: {e}")
+        try:
+            mongo_client.close()
+        except Exception:
+            pass
 
 def _mint_agent_token(session_id: str) -> str:
     """Mint a LiveKit JWT token for the agent participant."""

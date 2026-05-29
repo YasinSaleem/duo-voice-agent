@@ -8,6 +8,8 @@ Does not gate on LATENCY_TRACE or external metrics export.
 import json
 import os
 import time
+import queue
+import threading
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
@@ -115,7 +117,30 @@ class LatencyTracker:
         self._completion_stats: list[dict[str, int]] = []
         self._baseline_config: dict[str, Any] = {}
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
+        # Background writer thread: events are queued from the event loop,
+        # serialized and written to disk on a dedicated thread (never blocks asyncio).
+        self._log_queue: queue.Queue = queue.Queue()
+        self._writer_thread = threading.Thread(target=self._log_writer, daemon=True)
+        self._writer_thread.start()
         self._log_event("latency_logger_started", log_path=self.log_path)
+
+    def _log_writer(self) -> None:
+        """Background thread that drains the log queue to disk."""
+        with open(self.log_path, "a", encoding="utf-8") as handle:
+            while True:
+                record = self._log_queue.get()
+                if record is None:
+                    break  # Shutdown sentinel
+                try:
+                    handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+                    handle.flush()
+                except Exception:
+                    pass  # Never crash the writer thread
+
+    def shutdown_writer(self) -> None:
+        """Flush remaining events and stop the background writer thread."""
+        self._log_queue.put(None)
+        self._writer_thread.join(timeout=5.0)
 
     def register_baseline_config(self, **config: Any) -> None:
         self._baseline_config = config
@@ -131,8 +156,7 @@ class LatencyTracker:
         if turn_id is not None:
             record["turn_id"] = turn_id
         record.update(fields)
-        with open(self.log_path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+        self._log_queue.put(record)
 
     def _ensure_turn(self, reason: str) -> int:
         if self._active_turn_id is None:

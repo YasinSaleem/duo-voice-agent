@@ -108,7 +108,7 @@ async def main() -> int:
         print("Missing DEEPGRAM_API_KEY in environment.")
         return 1
 
-    voice = os.getenv("DEEPGRAM_VOICE", "aura-2-javier-es")
+    voice = os.getenv("DEEPGRAM_VOICE", "aura-2-alvaro-es")
     text = args.text or os.getenv("TTS_TEST_TEXT", DEFAULT_TEXT)
 
     tts = DeepgramTTSService(

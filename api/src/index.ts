@@ -80,6 +80,30 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`API server successfully started on port ${PORT}`);
+});
+
+// Graceful shutdown on SIGTERM (container orchestrators, cloud deploys)
+process.on('SIGTERM', () => {
+  console.log('[API] SIGTERM received, draining connections...');
+  server.close(() => {
+    console.log('[API] All connections drained. Exiting.');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('[API] SIGINT received, shutting down...');
+  server.close(() => process.exit(0));
+});
+
+// Global safety nets for unhandled errors
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Promise Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err);
+  process.exit(1);
 });

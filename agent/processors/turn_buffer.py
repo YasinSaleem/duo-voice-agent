@@ -71,8 +71,8 @@ class UserTurnBufferProcessor(FrameProcessor):
 
         # Ensure turn_id is generated
         if not self._current_turn_id:
-            import uuid
-            self._current_turn_id = f"user_{uuid.uuid4().hex[:8]}"
+            from bson.objectid import ObjectId
+            self._current_turn_id = str(ObjectId())
             self._current_seq = 0
 
         self._current_seq += 1
@@ -107,8 +107,8 @@ class UserTurnBufferProcessor(FrameProcessor):
             return
 
         if not self._current_turn_id:
-            import uuid
-            self._current_turn_id = f"user_{uuid.uuid4().hex[:8]}"
+            from bson.objectid import ObjectId
+            self._current_turn_id = str(ObjectId())
             self._current_seq = 0
 
         if not self._buffered_frames:
@@ -146,24 +146,23 @@ class UserTurnBufferProcessor(FrameProcessor):
         task.add_done_callback(self._side_effect_tasks.discard)
 
     async def _persist_turn_side_effects(self, merged_text: str, current_turn_id: str) -> None:
-        turn_id = None
         try:
-            if self.on_turn_persisted:
-                turn_id = await self.on_turn_persisted(self.session_id, "user", merged_text)
-
-            final_turn_id = turn_id if turn_id else current_turn_id
-
-            if turn_id and self.on_grammar_job_enqueued:
-                await self.on_grammar_job_enqueued(self.session_id, turn_id)
-
+            # 1. Send WebSocket event to frontend instantly!
             payload = json.dumps({
                 "type": "user_turn_final",
-                "turn_id": final_turn_id,
-                "turnId": final_turn_id,
+                "turn_id": current_turn_id,
+                "turnId": current_turn_id,
                 "interim_turn_id": current_turn_id,
                 "text": merged_text,
             })
             await self.transport.send_message(payload)
+
+            # 2. Perform DB write and grammar queueing in the background
+            if self.on_turn_persisted:
+                await self.on_turn_persisted(self.session_id, "user", merged_text, current_turn_id)
+
+            if self.on_grammar_job_enqueued:
+                await self.on_grammar_job_enqueued(self.session_id, current_turn_id)
         except Exception as e:
             print(f"[UserTurnBufferProcessor] Error in background turn side effects: {e}", flush=True)
 

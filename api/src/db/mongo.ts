@@ -9,35 +9,45 @@ const uri: string = mongoUri;
 
 let clientInstance: MongoClient | null = null;
 let dbInstance: Db | null = null;
+let connectPromise: Promise<MongoClient> | null = null;
 
 export async function connectMongo(): Promise<MongoClient> {
   if (clientInstance) {
     return clientInstance;
   }
 
-  const maskedUri = uri.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@');
-  console.log(`[MongoDB] Initializing lazy client connection to ${maskedUri}`);
+  // Promise lock pattern: concurrent callers await the same initialization promise
+  if (!connectPromise) {
+    const maskedUri = uri.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@');
+    console.log(`[MongoDB] Initializing lazy client connection to ${maskedUri}`);
 
-  clientInstance = new MongoClient(uri, {
-    maxPoolSize: 10,
-    minPoolSize: 2
-  });
+    connectPromise = (async () => {
+      const client = new MongoClient(uri, {
+        maxPoolSize: 10,
+        minPoolSize: 2
+      });
 
-  // Log transient and other errors for observability only
-  // Rely on MongoDB driver internal connection pool recovery
-  clientInstance.on('error', (err) => {
-    console.error('[MongoDB] Connection lifecycle error:', err);
-  });
+      // Log transient and other errors for observability only
+      // Rely on MongoDB driver internal connection pool recovery
+      client.on('error', (err) => {
+        console.error('[MongoDB] Connection lifecycle error:', err);
+      });
 
-  // Teardown singleton ONLY on terminal close events
-  clientInstance.on('close', () => {
-    console.warn('[MongoDB] Connection closed, tearing down singleton.');
-    dbInstance = null;
-    clientInstance = null;
-  });
+      // Teardown singleton ONLY on terminal close events
+      client.on('close', () => {
+        console.warn('[MongoDB] Connection closed, tearing down singleton.');
+        dbInstance = null;
+        clientInstance = null;
+        connectPromise = null;
+      });
 
-  await clientInstance.connect();
-  return clientInstance;
+      await client.connect();
+      clientInstance = client;
+      return client;
+    })();
+  }
+
+  return connectPromise;
 }
 
 export async function getDb(): Promise<Db> {

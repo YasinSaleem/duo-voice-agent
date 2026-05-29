@@ -1,7 +1,7 @@
 import asyncio
 import json
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
-from pipecat.frames.frames import Frame, TextFrame
+from pipecat.frames.frames import Frame, TextFrame, InterruptionFrame
 from agent.core.db import redis_async_client as redis
 
 class TutorSpeechStreamer(FrameProcessor):
@@ -31,13 +31,22 @@ class TutorSpeechStreamer(FrameProcessor):
 
     async def _notify_client(self, text: str) -> None:
         try:
-            await redis.set(f"agent_speaking:{self.session_id}", "1", ex=30)
-            await redis.set(f"agent_speaking_text:{self.session_id}", text, ex=30)
-            print(f"[TutorSpeechStreamer] Sending chunk to client: '{text}'")
+            # 1. Send WebSocket text chunk to client instantly!
             payload = json.dumps({"type": "tutor_text_chunk", "text": text})
             await self.transport.send_message(payload)
+            print(f"[TutorSpeechStreamer] Sent chunk to client instantly: '{text}'")
+
+            # 2. Perform Redis speaks-indicator writes non-blockingly in the background
+            async def _bg_redis_updates():
+                try:
+                    await redis.set(f"agent_speaking:{self.session_id}", "1", ex=30)
+                    await redis.set(f"agent_speaking_text:{self.session_id}", text, ex=30)
+                except Exception as re:
+                    print(f"[TutorSpeechStreamer] Redis background write error: {re}", flush=True)
+
+            asyncio.create_task(_bg_redis_updates())
         except Exception as e:
-            print(f"[TutorSpeechStreamer] Error: {e}")
+            print(f"[TutorSpeechStreamer] Error: {e}", flush=True)
 
     def _schedule_notify(self, text: str) -> None:
         self._queue.put_nowait(text)
@@ -46,6 +55,34 @@ class TutorSpeechStreamer(FrameProcessor):
         await super().process_frame(frame, direction)
         if isinstance(frame, TextFrame):
             self._schedule_notify(frame.text)
+        elif isinstance(frame, InterruptionFrame):
+            print("[TutorSpeechStreamer] Interruption detected! Clearing queued text and notifying client.", flush=True)
+            # Clear pending text queue immediately
+            while not self._queue.empty():
+                try:
+                    self._queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+            
+            # Send interruption signal to client non-blockingly in the background
+            async def _bg_notify():
+                try:
+                    payload = json.dumps({"type": "tutor_text_interrupted"})
+                    await self.transport.send_message(payload)
+                except Exception as e:
+                    print(f"[TutorSpeechStreamer] Interruption notify error: {e}", flush=True)
+            
+            asyncio.create_task(_bg_notify())
+
+            # Instantly clear Redis speaks indicators in the background
+            async def _bg_redis_clear():
+                try:
+                    await redis.delete(f"agent_speaking:{self.session_id}")
+                    await redis.delete(f"agent_speaking_text:{self.session_id}")
+                except Exception as re:
+                    print(f"[TutorSpeechStreamer] Redis background clear error: {re}", flush=True)
+            asyncio.create_task(_bg_redis_clear())
+
         await self.push_frame(frame, direction)
 
     async def cleanup(self) -> None:

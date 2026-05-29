@@ -235,6 +235,14 @@ export async function spawnAgent(session_id: string): Promise<boolean> {
     });
     child.unref();
 
+    // Close parent's copy of the log file descriptor to prevent fd leak
+    fs.closeSync(logFd);
+
+    // Listen for early spawn failures (e.g. python binary not found)
+    child.on('error', (err) => {
+      console.error(`[Agent Spawn] Child process error for session ${session_id}:`, err);
+    });
+
     console.log(`[Agent Spawn] Detached voice agent process successfully spawned for session: ${session_id}`);
     console.log(`  Agent runtime logs appended to: ${logFilePath}`);
     return true;

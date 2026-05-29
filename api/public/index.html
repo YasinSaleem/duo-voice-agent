@@ -2369,6 +2369,16 @@
                 }
               } else if (data.type === 'tutor_text_end') {
                 state.tutorSpeechNew = true;
+              } else if (data.type === 'tutor_text_interrupted') {
+                const container = document.getElementById('live-caption-container');
+                const textEl = document.getElementById('live-caption-text');
+                if (container) {
+                  container.classList.add('hidden');
+                }
+                if (textEl) {
+                  textEl.textContent = '';
+                }
+                state.tutorSpeechNew = true;
               }
             } catch (e) {
               console.error('[LiveKit Data Error]:', e);
